@@ -1,0 +1,1 @@
+pyinstaller -i ../../../build_cfg/mac/sciqlopLOGO.icns --name SciQLop --windowed --noconsole --hidden-import spwc --add-data plugins:plugins   main.py

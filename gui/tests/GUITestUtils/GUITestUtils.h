@@ -7,8 +7,10 @@
 #include <QDesktopWidget>
 #include <QMouseEvent>
 #include <QPoint>
+#include <QTest>
 #include <QtTest>
-
+#include <QtTestWidgets>
+#include <QtTestGui>
 #include <SqpApplication.h>
 #include <Variable/VariableController2.h>
 #include <qcustomplot.h>

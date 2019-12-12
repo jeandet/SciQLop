@@ -5,6 +5,7 @@ import sys
 from PySide2.QtWidgets import QApplication, QMainWindow, QDockWidget
 from PySide2.QtCore import QSize, Qt
 from PySide2 import QtGui
+import ipykernel.datapub
 import os
 sys.path.append(os.getcwd())
 from SciQLopBindings import SqpApplication, MainWindow, init_resources, load_plugins, SqpApplication_ctor
@@ -89,7 +90,6 @@ class IPythonDockWidget(QDockWidget):
 def print_process_id():
     print ('Process ID is:', os.getpid())
 
-
 if __name__ == "__main__":
     init_resources()
     app = SqpApplication_ctor(sys.argv)
@@ -99,8 +99,17 @@ if __name__ == "__main__":
     term = IPythonDockWidget(available_vars={"app":app, "main_window":main_window}, custom_banner="SciQLop IPython Console ")
     main_window.addDockWidget(Qt.BottomDockWidgetArea, term)
     main_window.show()
-    for file in os.listdir('plugins'):
-        if os.path.isfile(f"plugins/{file}"):
-            exec(open(f"plugins/{file}").read())
+    if getattr(sys, 'frozen', False):
+        # If the application is run as a bundle, the pyInstaller bootloader
+        # extends the sys module by a flag frozen=True and sets the app 
+        # path into variable _MEIPASS'.
+        application_path = sys._MEIPASS
+    else:
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    plugin_path = os.path.realpath(application_path + "/plugins")
+    print("Plugins path = "+plugin_path)
+    for file in os.listdir(plugin_path):
+        if os.path.isfile(f"{plugin_path}/{file}"):
+            exec(open(f"{plugin_path}/{file}").read())
     sys.exit(app.exec_())
 

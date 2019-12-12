@@ -29,7 +29,7 @@ if shiboken2.__file__ and shiboken2_generator.__file__ and PySide2.__file__:
     PySide2_inc = first_existing_path([PySide2.__path__[0]+'/include','/usr/include/PySide2'])
     PySide2_typesys = first_existing_path([PySide2.__path__[0]+'/typesystems','/usr/share/PySide2/typesystems'])
     PySide2_includes = first_existing_path([PySide2.__path__[0]+'/include','/usr/include/PySide2'])
-    shiboken2_includes = first_existing_path([shiboken2.__path__[0]+'/include','/usr/include/shiboken2'])
+    shiboken2_includes = first_existing_path([shiboken2.__path__[0]+'/include', shiboken2_generator.__path__[0]+'/include', '/usr/include/shiboken2'])
     
     if args.typesystem:
         print(PySide2_typesys)

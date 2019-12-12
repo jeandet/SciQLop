@@ -162,10 +162,10 @@ sciqlop_gui = declare_dependency(link_with : sciqlop_gui_lib,
 
 gui_tests_inc = include_directories(['tests/GUITestUtils'])
 
-catalogue_browser_moc_files = qt5.preprocess(moc_sources : 'tests/catalogue/browser/main.cpp')
-catalogue_browser = executable('catalogue_browser', 'tests/catalogue/browser/main.cpp',catalogue_browser_moc_files,
-                                include_directories : gui_tests_inc,
-                                dependencies :[sciqlop_gui, qt5test])
+#catalogue_browser_moc_files = qt5.preprocess(moc_sources : 'tests/catalogue/browser/main.cpp')
+#catalogue_browser = executable('catalogue_browser', 'tests/catalogue/browser/main.cpp',catalogue_browser_moc_files,
+#                                include_directories : gui_tests_inc,
+#                                dependencies :[sciqlop_gui, qt5test])
 
                                 
 if get_option('biuld_gui_tests')
