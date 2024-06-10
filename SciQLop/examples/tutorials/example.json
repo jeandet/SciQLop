@@ -1,0 +1,12 @@
+{
+  "image": "image.png",
+  "notebook": "Tutorials.ipynb",
+  "description": "SciQLop tutorials",
+  "name": "Tutorials",
+  "tags": [
+    "tutorial",
+    "virtual-product",
+    "spectro"
+  ],
+  "dependencies": []
+}
