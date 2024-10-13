@@ -1,7 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from SciQLopPlots import SciQLopPlotRange
-from .icons import icons, register_icon  # noqa: F401
-from .products_model.product_node import ProductNode as Product  # noqa: F401
+from .icons import register_icon  # noqa: F401
 from speasy.core import make_utc_datetime, AnyDateTimeType
 
 
@@ -24,8 +23,8 @@ class TimeRange(SciQLopPlotRange):
             start = make_utc_datetime(start).timestamp()
         if type(stop) not in (float, int):
             stop = make_utc_datetime(stop).timestamp()
-        self.start = min(start, stop)
-        self.stop = max(stop, start)
+        self[0] = float(min(start, stop))
+        self[1] = float(max(stop, start))
 
     @property
     def start(self):
@@ -41,7 +40,7 @@ class TimeRange(SciQLopPlotRange):
     @property
     def datetime_start(self):
         """The start time as a Python datetime object."""
-        return datetime.utcfromtimestamp(self.start)
+        return datetime.fromtimestamp(self.start, tz=timezone.utc)
 
     @property
     def stop(self):
@@ -57,9 +56,17 @@ class TimeRange(SciQLopPlotRange):
     @property
     def datetime_stop(self):
         """The stop time as a Python datetime object."""
-        return datetime.utcfromtimestamp(self.stop)
+        return datetime.fromtimestamp(self.stop, tz=timezone.utc)
 
     def __repr__(self):
-        return f"""TimeRange: {self._start}, {self._stop}
+        return f"""TimeRange: {self.start}, {self.stop}
 \t{self.datetime_start}, {self.datetime_stop}
         """
+
+    def __getstate__(self):
+        return self.start, self.stop
+
+    def __setstate__(self, state):
+        super().__init__(0, 0)
+        self[0] = state[0]
+        self[1] = state[1]
