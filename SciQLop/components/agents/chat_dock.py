@@ -58,6 +58,13 @@ class AgentChatDock(QWidget):
         self._reset_btn.clicked.connect(self._on_reset)
         header.addWidget(self._reset_btn)
 
+        self._reconnect_btn = QPushButton("Reconnect")
+        self._reconnect_btn.setToolTip(
+            "Tear down the backend and reconnect (re-reads settings / API keys)."
+        )
+        self._reconnect_btn.clicked.connect(self._on_reconnect)
+        header.addWidget(self._reconnect_btn)
+
         self._interactive: tuple = ()
 
         self._backend_combo = QComboBox()
@@ -113,6 +120,7 @@ class AgentChatDock(QWidget):
             self._input,
             self._send_btn,
             self._reset_btn,
+            self._reconnect_btn,
             self._writes_toggle,
             self._session_combo,
             self._model_combo,
@@ -230,6 +238,28 @@ class AgentChatDock(QWidget):
     async def _reset_backend(self, session: _AgentSession) -> None:
         await session.backend.reset()
         self._populate_session_list(session.backend)
+
+    def _on_reconnect(self) -> None:
+        if self._current is None:
+            return
+        self._spawn(self._reconnect_backend(self._current))
+
+    async def _reconnect_backend(self, name: str) -> None:
+        old = self._sessions.pop(name, None)
+        if old is not None:
+            try:
+                await old.backend.cancel()
+            except Exception:
+                pass
+        try:
+            session = self._create_session(name)
+        except Exception as e:
+            self._set_status(f"Reconnect failed: {e}")
+            return
+        self._sessions[name] = session
+        if self._current == name:
+            self._bind_to_session(session)
+        self._set_status("Reconnected.")
 
     def _on_session_picked(self, index: int) -> None:
         if self._current is None:
