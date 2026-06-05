@@ -100,6 +100,11 @@ def resolve_workspace_dir(
             return candidate
         return workspaces_root / workspace_name
 
+    if settings.reopen_last_workspace:
+        last = _most_recently_used_workspace(workspaces_root)
+        if last is not None:
+            return last
+
     return workspaces_root / "default"
 
 

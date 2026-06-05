@@ -36,6 +36,7 @@ def test_parse_args_sciqlop_file():
 @patch(f"{MODULE}.SciQLopWorkspacesSettings", create=True)
 def test_resolve_default_workspace(MockSettings):
     MockSettings.return_value.workspaces_dir = "/fake/workspaces"
+    MockSettings.return_value.reopen_last_workspace = False
     # We need to inject the mock into the function's import
     with patch.dict("sys.modules", {
         "SciQLop.components.workspaces": MagicMock(),
@@ -232,3 +233,66 @@ def test_most_recent_none_when_no_markers(tmp_path):
 
 def test_most_recent_none_when_root_missing(tmp_path):
     assert _most_recently_used_workspace(tmp_path / "does-not-exist") is None
+
+
+# --- resolve_workspace_dir resume-last-used tests ---
+
+
+def _settings_module(workspaces_dir, reopen):
+    inst = MagicMock()
+    inst.workspaces_dir = str(workspaces_dir)
+    inst.reopen_last_workspace = reopen
+    cls = MagicMock(return_value=inst)
+    return patch.dict("sys.modules", {
+        "SciQLop.components.workspaces.backend.settings": MagicMock(
+            SciQLopWorkspacesSettings=cls
+        ),
+    })
+
+
+def test_resolve_resumes_last_when_enabled(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    _make_ws(root, "old", used_mtime=1_000_000)
+    newest = _make_ws(root, "fresh", used_mtime=2_000_000)
+    with _settings_module(root, reopen=True):
+        d = resolve_workspace_dir(workspace_name=None, sciqlop_file=None)
+    assert d == newest
+
+
+def test_resolve_default_when_reopen_disabled(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    _make_ws(root, "fresh", used_mtime=2_000_000)
+    with _settings_module(root, reopen=False):
+        d = resolve_workspace_dir(workspace_name=None, sciqlop_file=None)
+    assert d == root / "default"
+
+
+def test_resolve_default_when_no_history(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    with _settings_module(root, reopen=True):
+        d = resolve_workspace_dir(workspace_name=None, sciqlop_file=None)
+    assert d == root / "default"
+
+
+def test_resolve_explicit_name_overrides_reopen(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    _make_ws(root, "fresh", used_mtime=2_000_000)
+    with _settings_module(root, reopen=True):
+        d = resolve_workspace_dir(workspace_name="picked", sciqlop_file=None)
+    assert d == root / "picked"
+
+
+def test_resolve_sciqlop_file_overrides_reopen(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    _make_ws(root, "fresh", used_mtime=2_000_000)
+    ws_file = tmp_path / "elsewhere" / "workspace.sciqlop"
+    ws_file.parent.mkdir()
+    ws_file.write_text('[workspace]\nname = "elsewhere"\n')
+    with _settings_module(root, reopen=True):
+        d = resolve_workspace_dir(workspace_name=None, sciqlop_file=str(ws_file))
+    assert d == ws_file.parent
