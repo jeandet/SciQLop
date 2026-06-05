@@ -2,7 +2,7 @@ from typing import Optional, List, Union
 
 import time as _time
 import numpy as np
-from PySide6.QtCore import QMimeData
+from PySide6.QtCore import QMimeData, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QColor
@@ -96,6 +96,22 @@ class _PlotHintsRegistry:
 
     def _drop(self, key: int) -> None:
         if self._entries.pop(key, None) is not None:
+            self._schedule_recompute()
+
+    def _schedule_recompute(self) -> None:
+        # _drop runs from a graph's `destroyed` signal, which fires while the
+        # owning plot may be mid-teardown (its child graphs are deleted from
+        # ~QWidget::deleteChildren, *after* the derived ~SciQLopPlot body has
+        # reset the vtable). Calling apply_plot_hints -> plot.y_axis() then
+        # dispatches through the dead vtable and segfaults — for projection
+        # plots whose curves function is a direct child this is reliable.
+        # Defer to the event loop: a real single-graph removal relabels on the
+        # next tick, while a teardown finds the plot gone and skips. See
+        # docs/qt-lifetime-patterns.md.
+        QTimer.singleShot(0, self._recompute_if_alive)
+
+    def _recompute_if_alive(self) -> None:
+        if shiboken6.isValid(self._plot):
             self._recompute()
 
     def _recompute(self) -> None:
