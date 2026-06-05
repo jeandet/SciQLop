@@ -4,9 +4,10 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 from SciQLop.sciqlop_launcher import (
     parse_args, resolve_workspace_dir, _read_switch_target,
-    check_xcb_cursor,
+    check_xcb_cursor, _most_recently_used_workspace,
     EXIT_RESTART, EXIT_SWITCH_WORKSPACE, READY_FILE_ENV,
 )
+from SciQLop.components.workspaces.backend.workspace_manifest import WorkspaceManifest
 
 MODULE = "SciQLop.sciqlop_launcher"
 
@@ -190,3 +191,44 @@ def test_xcb_cursor_returns_warning_when_missing(mock_load, mock_sys):
 @patch("SciQLop.sciqlop_launcher.platform.system", return_value="Windows")
 def test_xcb_cursor_returns_none_on_non_linux(mock_sys):
     assert check_xcb_cursor() is None
+
+
+# --- _most_recently_used_workspace tests ---
+
+
+def _make_ws(root, name, used_mtime):
+    d = root / name
+    d.mkdir(parents=True)
+    (d / "workspace.sciqlop").write_text('[workspace]\nname = "%s"\n' % name)
+    WorkspaceManifest.touch_last_used(d)
+    os.utime(d / ".last_used", (used_mtime, used_mtime))
+    return d
+
+
+def test_most_recent_picks_newest_marker(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    _make_ws(root, "old", used_mtime=1_000_000)
+    newest = _make_ws(root, "fresh", used_mtime=2_000_000)
+    assert _most_recently_used_workspace(root) == newest
+
+
+def test_most_recent_ignores_dirs_without_manifest(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    (root / "not-a-ws").mkdir()
+    real = _make_ws(root, "real", used_mtime=1_000_000)
+    assert _most_recently_used_workspace(root) == real
+
+
+def test_most_recent_none_when_no_markers(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    d = root / "ws"
+    d.mkdir()
+    (d / "workspace.sciqlop").write_text('[workspace]\nname = "ws"\n')
+    assert _most_recently_used_workspace(root) is None
+
+
+def test_most_recent_none_when_root_missing(tmp_path):
+    assert _most_recently_used_workspace(tmp_path / "does-not-exist") is None

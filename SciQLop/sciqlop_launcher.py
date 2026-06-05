@@ -51,6 +51,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv if argv is not None else sys.argv[1:])
 
 
+def _most_recently_used_workspace(workspaces_root: Path) -> Path | None:
+    """Return the workspace dir with the newest .last_used marker, or None.
+
+    Only directories containing a workspace.sciqlop manifest and a .last_used
+    marker are candidates. last_used() returns an ISO timestamp string, which
+    sorts chronologically as text.
+    """
+    from SciQLop.components.workspaces.backend.workspace_manifest import WorkspaceManifest
+
+    if not workspaces_root.is_dir():
+        return None
+    used = [
+        (WorkspaceManifest.last_used(d), d)
+        for d in workspaces_root.iterdir()
+        if (d / "workspace.sciqlop").is_file()
+    ]
+    used = [(ts, d) for ts, d in used if ts]
+    if not used:
+        return None
+    used.sort(key=lambda t: t[0], reverse=True)
+    return used[0][1]
+
+
 def resolve_workspace_dir(
     workspace_name: str | None,
     sciqlop_file: str | None,
