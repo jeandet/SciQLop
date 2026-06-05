@@ -11,3 +11,4 @@ class SciQLopWorkspacesSettings(ConfigEntry):
     category = SettingsCategory.WORKSPACES
     subcategory = "general"
     workspaces_dir: str = Field(default=DEFAULT_WORKSPACE_DIR, json_schema_extra={"widget": "path_dir"})
+    reopen_last_workspace: bool = Field(default=True)
