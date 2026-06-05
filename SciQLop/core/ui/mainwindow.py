@@ -180,7 +180,7 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self.addTSPanel.triggered.connect(lambda: self.new_plot_panel())
         self.toolBar.addAction(self.addTSPanel)
         sciqlop_app().add_quickstart_shortcut(name="Plot panel", description="Add a new plot panel",
-                                              icon=theme_adapted_icon("plot_panel"), callback=self.new_plot_panel)
+                                              icon=theme_icon("add_graph"), callback=self.new_plot_panel)
 
     def _setup_status_bar(self):
         self._statusbar = QtWidgets.QStatusBar(self)
