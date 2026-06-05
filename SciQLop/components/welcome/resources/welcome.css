@@ -117,6 +117,71 @@ body {
     opacity: 0.9;
 }
 
+/* --- Primary action row --- */
+
+#primary-actions {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+#primary-actions:empty {
+    display: none;
+}
+
+.pa {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 22px 44px 22px 24px;
+    border-radius: 12px;
+    cursor: pointer;
+    background: var(--Window);
+    border: 1px solid color-mix(in srgb, var(--Highlight) 50%, var(--Borders));
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s ease;
+}
+
+.pa:hover {
+    border-color: var(--Highlight);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+    transform: translateY(-1px);
+}
+
+.pa .pa-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 11px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--Highlight);
+}
+
+.pa .pa-icon img {
+    width: 38px;
+    height: 38px;
+}
+
+.pa .pa-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.pa .pa-name {
+    font-weight: 600;
+    font-size: 1.3em;
+    color: var(--Text);
+}
+
+.pa .pa-desc {
+    font-size: 0.9em;
+    color: var(--UnselectedText);
+}
+
 /* --- News banner --- */
 
 #news-banner {
@@ -139,6 +204,33 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+#news-banner #news-body {
+    flex: 1;
+    min-width: 0;
+}
+
+#news-summary {
+    font-size: 0.9em;
+    color: var(--Text);
+}
+
+#news-banner #news-list.collapsed {
+    display: none;
+}
+
+.news-toggle {
+    background: none;
+    border: none;
+    color: var(--Highlight);
+    cursor: pointer;
+    font-size: 0.85em;
+    padding: 4px 0 0;
+}
+
+.news-toggle:hover {
+    text-decoration: underline;
 }
 
 .news-dismiss {
@@ -376,42 +468,6 @@ h2 {
     font-size: 0.75em;
     color: var(--UnselectedText);
     margin-top: 2px;
-}
-
-/* --- Shortcut cards (quickstart) --- */
-
-.shortcut-card {
-    min-width: 120px;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border: 1px solid var(--Borders);
-    border-radius: 8px;
-    background: var(--Window);
-    cursor: pointer;
-    transition: box-shadow 0.2s ease, transform 0.15s ease, border-color 0.15s;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.25);
-    font-size: 0.9em;
-    text-align: center;
-}
-
-.shortcut-card:hover {
-    box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.4);
-    transform: scale(1.03);
-    border-color: var(--Highlight);
-}
-
-.shortcut-card .shortcut-name {
-    font-weight: 600;
-}
-
-.shortcut-card .shortcut-desc {
-    font-size: 0.78em;
-    color: var(--UnselectedText);
-    max-width: 140px;
 }
 
 /* --- New workspace card --- */
