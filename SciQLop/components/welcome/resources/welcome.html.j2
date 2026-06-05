@@ -21,20 +21,21 @@
 
     <div id="latest-release" class="hidden"></div>
 
+    <div id="primary-actions"></div>
+
     <div id="hero" class="hidden"></div>
 
     <div id="news-banner" class="hidden">
-        <div id="news-list"></div>
+        <div id="news-body">
+            <div id="news-summary"></div>
+            <div id="news-list" class="collapsed"></div>
+            <button id="news-toggle" class="news-toggle" type="button">Show all &#9662;</button>
+        </div>
         <button id="news-dismiss" class="news-dismiss" title="Dismiss">&times;</button>
     </div>
 
     <div id="main-content">
         <div id="left-column">
-            <section id="quickstart">
-                <h2>Quick start</h2>
-                <div class="cards-row" id="quickstart-cards"></div>
-            </section>
-
             <section id="recent-workspaces">
                 <div class="section-header">
                     <h2>Recent workspaces</h2>
