@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import PySide6QtAds as QtAds
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -453,63 +452,18 @@ def _register_agent_ui(main_window, dock) -> None:
     ``ensure_agent_dock`` calls from every installed backend plugin."""
     if getattr(main_window, _UI_READY_ATTR, False):
         return
-    dock_widget = _dock_agent_panel(main_window, dock)
-    if dock_widget is None:
+    if _dock_agent_panel(main_window, dock) is None:
         return
-    _add_toolbar_toggle(main_window, dock_widget)
-    _add_tools_menu_entry(main_window, dock)
     setattr(main_window, _UI_READY_ATTR, True)
 
 
 def _dock_agent_panel(main_window, dock):
-    """Dock the chat panel, hidden, with the ``assistant`` tab icon."""
+    """Add the chat panel as a left auto-hide side panel — wired exactly like
+    the product tree, catalogs, settings and plot-properties panels (a left
+    sidebar tab plus a View-menu toggle). The ``assistant`` window icon set on
+    the panel becomes the tab icon."""
     dock_manager = getattr(main_window, "dock_manager", None)
     if dock_manager is None:
         return None
-    main_window.addWidgetIntoDock(QtAds.DockWidgetArea.RightDockWidgetArea, dock)
-    dock_widget = dock_manager.findDockWidget(_DOCK_TITLE)
-    if dock_widget is not None:
-        dock_widget.setIcon(get_icon("assistant"))
-        dock_widget.toggleView(False)
-    return dock_widget
-
-
-def _add_toolbar_toggle(main_window, dock_widget) -> None:
-    toolbar = getattr(main_window, "toolBar", None)
-    if toolbar is None:
-        return
-    toggle = dock_widget.toggleViewAction()
-    toggle.setIcon(get_icon("assistant"))
-    toggle.setText("Agent Chat")
-    toolbar.addAction(toggle)
-
-
-def _add_tools_menu_entry(main_window, dock) -> None:
-    tools_menu = getattr(main_window, "toolsMenu", None)
-    if tools_menu is None:
-        return
-    tools_menu.addAction(
-        get_icon("assistant"), "Agent Chat",
-        lambda: _reveal_agent_dock(main_window, dock),
-    )
-
-
-def _reveal_agent_dock(main_window, dock) -> None:
-    """Bring the agents dock into view. ``dock.show()`` on the inner widget is
-    a no-op once the wrapping CDockWidget has been hidden via
-    ``toggleView(False)``, so find that CDockWidget by identity and toggle it
-    visible + raise it."""
-    dock_manager = getattr(main_window, "dock_manager", None)
-    if dock_manager is not None:
-        for cdw in dock_manager.dockWidgets():
-            try:
-                if cdw.widget() is dock:
-                    cdw.toggleView(True)
-                    cdw.raise_()
-                    return
-            except RuntimeError:
-                # CDockWidget has been deleted on the C++ side — skip.
-                continue
-    # Fallback: at minimum show the inner widget.
-    dock.show()
-    dock.raise_()
+    main_window.add_side_pan(dock)
+    return dock_manager.findDockWidget(_DOCK_TITLE)

@@ -56,8 +56,10 @@ def test_agent_assistant_icon_renders(qapp):
 
 def test_agent_ui_registered_once_centrally(bare_main_window):
     """Core owns the whole agent chat UI. Calling ``ensure_agent_dock`` from
-    several backend plugins must yield exactly one shared dock, one toolbar
-    button and one menu entry — all carrying the core ``assistant`` icon."""
+    several backend plugins must yield exactly one shared dock, registered as a
+    left auto-hide side panel (like the product tree / catalogs / settings
+    panels) with a single View-menu toggle — no top-toolbar button and no
+    Tools-menu entry."""
     from SciQLop.components.agents import ensure_agent_dock
 
     mw = bare_main_window
@@ -67,15 +69,15 @@ def test_agent_ui_registered_once_centrally(bare_main_window):
 
     cdw = mw.dock_manager.findDockWidget("Agents")
     assert cdw is not None
-    assert not cdw.icon().isNull()  # tab icon present
+    assert not cdw.icon().isNull()  # tab icon present, core assistant icon
+    assert cdw.isAutoHide()         # docked as a left auto-hide side panel
 
-    toolbar_buttons = [a for a in mw.toolBar.actions() if a.text() == "Agent Chat"]
-    assert len(toolbar_buttons) == 1
-    assert not toolbar_buttons[0].icon().isNull()
-
-    menu_entries = [a for a in mw.toolsMenu.actions() if a.text() == "Agent Chat"]
-    assert len(menu_entries) == 1
-    assert not menu_entries[0].icon().isNull()
+    # Wired exactly like the other side panels: one View-menu toggle, and no
+    # dedicated top-toolbar button or Tools-menu entry.
+    assert [a for a in mw.toolBar.actions() if a.text() == "Agent Chat"] == []
+    assert [a for a in mw.toolsMenu.actions() if a.text() == "Agent Chat"] == []
+    view_toggles = [a for a in mw.viewMenu.actions() if a.text() == "Agents"]
+    assert len(view_toggles) == 1
 
 
 def test_added_dock_gets_widget_window_icon(bare_main_window):
