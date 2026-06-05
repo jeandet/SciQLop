@@ -69,32 +69,39 @@ function loadHero() {
 function loadQuickstart() {
     backend.list_quickstart_shortcuts(function(json_str) {
         const shortcuts = JSON.parse(json_str);
-        const container = document.getElementById("quickstart-cards");
+        const container = document.getElementById("primary-actions");
         container.innerHTML = "";
         shortcuts.forEach(function(s) {
-            const card = document.createElement("div");
-            card.className = "shortcut-card";
+            const action = document.createElement("div");
+            action.className = "pa";
+
+            const iconWrap = document.createElement("div");
+            iconWrap.className = "pa-icon";
             if (s.icon) {
                 const img = document.createElement("img");
                 img.src = s.icon;
-                img.style.width = "48px";
-                img.style.height = "48px";
-                card.appendChild(img);
+                iconWrap.appendChild(img);
             }
-            const label = document.createElement("span");
-            label.className = "shortcut-name";
-            label.textContent = s.name;
-            card.appendChild(label);
+            action.appendChild(iconWrap);
+
+            const text = document.createElement("div");
+            text.className = "pa-text";
+            const name = document.createElement("span");
+            name.className = "pa-name";
+            name.textContent = s.name;
+            text.appendChild(name);
             if (s.description) {
                 const desc = document.createElement("span");
-                desc.className = "shortcut-desc";
+                desc.className = "pa-desc";
                 desc.textContent = s.description;
-                card.appendChild(desc);
+                text.appendChild(desc);
             }
-            card.addEventListener("click", function() {
+            action.appendChild(text);
+
+            action.addEventListener("click", function() {
                 backend.run_quickstart(s.name);
             });
-            container.appendChild(card);
+            container.appendChild(action);
         });
     });
 }
@@ -194,25 +201,43 @@ function loadNews() {
     backend.list_news(function(json_str) {
         const news = JSON.parse(json_str);
         const banner = document.getElementById("news-banner");
-        const container = document.getElementById("news-list");
-        container.innerHTML = "";
+        const list = document.getElementById("news-list");
+        const summary = document.getElementById("news-summary");
+        const toggle = document.getElementById("news-toggle");
+        list.innerHTML = "";
         if (!news || news.length === 0) {
             banner.classList.add("hidden");
             return;
         }
+        summary.textContent = "📣 " + news.length +
+            (news.length === 1 ? " update" : " updates");
         news.forEach(function(item) {
             const row = document.createElement("div");
             row.className = "news-item";
-            row.innerHTML =
-                '<span class="news-icon">' + item.icon + '</span>' +
-                '<span class="news-text">' + escapeHtml(item.title) + '</span>' +
-                '<span class="news-date">' + escapeHtml(item.date || "") + '</span>';
-            container.appendChild(row);
+            const iconSpan = document.createElement("span");
+            iconSpan.className = "news-icon";
+            iconSpan.textContent = item.icon;
+            const textSpan = document.createElement("span");
+            textSpan.className = "news-text";
+            textSpan.textContent = item.title;
+            const dateSpan = document.createElement("span");
+            dateSpan.className = "news-date";
+            dateSpan.textContent = item.date || "";
+            row.appendChild(iconSpan);
+            row.appendChild(textSpan);
+            row.appendChild(dateSpan);
+            list.appendChild(row);
         });
+        list.classList.add("collapsed");
+        toggle.textContent = "Show all ▾";
+        toggle.onclick = function() {
+            const collapsed = list.classList.toggle("collapsed");
+            toggle.textContent = collapsed ? "Show all ▾" : "Show less ▴";
+        };
         banner.classList.remove("hidden");
-        document.getElementById("news-dismiss").addEventListener("click", function() {
+        document.getElementById("news-dismiss").onclick = function() {
             banner.classList.add("hidden");
-        });
+        };
     });
 }
 
@@ -645,11 +670,11 @@ function applyGlobalFilter(query) {
     });
 
     // Also filter quickstart shortcuts
-    var qsContainer = document.getElementById("quickstart-cards");
+    var qsContainer = document.getElementById("primary-actions");
     if (qsContainer) {
-        var shortcuts = qsContainer.querySelectorAll(".shortcut-card");
+        var shortcuts = qsContainer.querySelectorAll(".pa");
         shortcuts.forEach(function(card) {
-            var name = (card.querySelector(".shortcut-name") || {}).textContent || "";
+            var name = (card.querySelector(".pa-name") || {}).textContent || "";
             var match = !filtering || name.toLowerCase().includes(query);
             card.style.display = match ? "" : "none";
         });
@@ -682,7 +707,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.body.addEventListener("click", function(e) {
-        if (!e.target.closest(".card, .shortcut-card, #details-panel, #hero, #global-filter-bar")) {
+        if (!e.target.closest(".card, .pa, #details-panel, #hero, #global-filter-bar")) {
             hideDetails();
         }
     });
