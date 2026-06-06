@@ -22,6 +22,7 @@ from SciQLop.core.unique_names import auto_name, release_name
 from SciQLop.components.workspaces import Workspace
 from SciQLop.components.theming import register_icon, get_icon, get_current_style_icon, theme_icon, theme_adapted_icon, SciQLopStyle
 from SciQLop.core.ui import Metrics
+from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components.sciqlop_logging import getLogger
 from SciQLopPlots import SciQLopMultiPlotPanel
 from SciQLop.components.settings.ui import SettingsPanel
@@ -78,7 +79,10 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self._setup_command_palette()
 
         self._appstore = None
-        self.toolsMenu.addAction("Plugin Store", self._show_appstore)
+        store = self.toolsMenu.addAction("Plugin Store", self._show_appstore)
+        store.setToolTip(rich_tooltip(
+            "Plugin Store",
+            "Browse and install community plugins."))
         self.welcome.backend.appstore_requested.connect(self._show_appstore)
 
     def showEvent(self, event):
@@ -116,13 +120,24 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self._menubar.setDefaultUp(True)
 
         self.viewMenu = QMenu("View")
+        self.viewMenu.setToolTipsVisible(True)
         self._menubar.addMenu(self.viewMenu)
-        self.viewMenu.addAction("Reload theme",
-                                lambda: sciqlop_app().apply_theme(SciQLopStyle().color_palette))
+        reload_theme = self.viewMenu.addAction(
+            "Reload theme",
+            lambda: sciqlop_app().apply_theme(SciQLopStyle().color_palette))
+        reload_theme.setToolTip(rich_tooltip(
+            "Reload theme",
+            "Re-apply the current color palette and refresh all icons."))
 
         self.toolsMenu = QMenu("Tools")
+        self.toolsMenu.setToolTipsVisible(True)
         self._menubar.addMenu(self.toolsMenu)
-        self.toolsMenu.addAction("Open JupyterLab", self.open_jupyterlab_widget)
+        open_lab = self.toolsMenu.addAction(
+            "Open JupyterLab", self.open_jupyterlab_widget)
+        open_lab.setToolTip(rich_tooltip(
+            "Open JupyterLab",
+            "Open the embedded JupyterLab connected to"
+            " this session's kernel."))
 
         from SciQLop.components.profiling import ProfilingMenu
         self._profiling_menu = ProfilingMenu(self)
@@ -147,11 +162,17 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         sciqlop_app().add_quickstart_shortcut("JupyterLab", "Open JupyterLab",
                                               Icons.get_icon("Jupyter"),
                                               self.open_jupyterlab_widget)
-        self.toolsMenu.addAction("Open JupyterLab in browser", wm.open_in_browser)
+        open_browser = self.toolsMenu.addAction(
+            "Open JupyterLab in browser", wm.open_in_browser)
+        open_browser.setToolTip(rich_tooltip(
+            "Open JupyterLab in browser",
+            "Open the JupyterLab server in your default web browser."))
 
         self.logs = LogsWidget(self)
         self.logs.setWindowIcon(theme_icon("view_list"))
-        self.viewMenu.addAction("Logs", self._show_logs)
+        logs = self.viewMenu.addAction("Logs", self._show_logs)
+        logs.setToolTip(rich_tooltip(
+            "Logs", "Show the application log panel."))
 
         self.settings_panel = SettingsPanel(self)
         self.settings_panel.setWindowIcon(theme_adapted_icon("settings"))
@@ -177,6 +198,9 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self.addTSPanel = QtGui.QAction(self)
         self.addTSPanel.setIcon(theme_icon("add_graph"))
         self.addTSPanel.setText("Add new plot panel")
+        self.addTSPanel.setToolTip(rich_tooltip(
+            "New plot panel",
+            "Create an empty panel to drop products onto."))
         self.addTSPanel.triggered.connect(lambda: self.new_plot_panel())
         self.toolBar.addAction(self.addTSPanel)
         sciqlop_app().add_quickstart_shortcut(name="Plot panel", description="Add a new plot panel",
@@ -212,7 +236,9 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
         self._stats_toggle = QtWidgets.QToolButton()
         self._stats_toggle.setText("\u25B6")
-        self._stats_toggle.setToolTip("Show system stats")
+        self._stats_toggle.setToolTip(rich_tooltip(
+            "System stats",
+            "Show live CPU, memory, and network usage."))
         self._stats_toggle.setAutoRaise(True)
         self._stats_toggle.setFixedSize(Metrics.icon_size(1.5))
         self._stats_toggle.clicked.connect(self._toggle_stats)
@@ -228,7 +254,11 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         visible = not self._stats_container.isVisible()
         self._stats_container.setVisible(visible)
         self._stats_toggle.setText("\u25C0" if visible else "\u25B6")
-        self._stats_toggle.setToolTip("Hide system stats" if visible else "Show system stats")
+        self._stats_toggle.setToolTip(rich_tooltip(
+            "System stats",
+            "Hide live usage stats."
+            if visible else
+            "Show live CPU, memory, and network usage."))
 
     def _setup_command_palette(self):
         from SciQLop.components.command_palette.ui.palette_widget import CommandPalette

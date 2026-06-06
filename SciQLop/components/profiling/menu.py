@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox, QWidget
 
 from SciQLop.core import tracing
+from SciQLop.core.ui.tooltips import rich_tooltip
 from .perfetto import open_trace_in_perfetto
 from .speasy_tracing import install as install_speasy_tracing
 
@@ -21,19 +22,28 @@ class ProfilingMenu(QObject):
         self._host = host
         install_speasy_tracing()
         self.menu = QMenu("Profiling", host)
+        self.menu.setToolTipsVisible(True)
         self._start = self.menu.addAction("Start trace…", self._on_start)
         self._stop = self.menu.addAction("Stop trace", self._on_stop)
+        self._start.setToolTip(rich_tooltip(
+            "Start trace",
+            "Begin recording a Perfetto performance trace."))
+        self._stop.setToolTip(rich_tooltip(
+            "Stop trace",
+            "Stop recording and save the current trace."))
         self.menu.addSeparator()
         self._open_last = self.menu.addAction(
             "Open last trace in Perfetto", self._on_open_last)
-        self._open_last.setToolTip(
-            "Reopens the most recently captured trace in Perfetto.")
+        self._open_last.setToolTip(rich_tooltip(
+            "Open last trace",
+            "Reopens the most recently captured trace in Perfetto."))
         self._open_pick = self.menu.addAction(
             "Open trace in Perfetto…", self._on_open_pick)
-        self._open_pick.setToolTip(
-            "Loads a trace file into https://ui.perfetto.dev/ in your default browser. "
-            "The trace is served from localhost and never uploaded — Perfetto runs "
-            "entirely client-side.")
+        self._open_pick.setToolTip(rich_tooltip(
+            "Open trace file",
+            "Loads a trace file into https://ui.perfetto.dev/ in your"
+            " default browser. The trace is served from localhost and"
+            " never uploaded — Perfetto runs entirely client-side."))
         self.menu.addSeparator()
         self._status = self.menu.addAction("Status: idle")
         self._status.setEnabled(False)
