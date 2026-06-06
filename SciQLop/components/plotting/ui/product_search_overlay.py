@@ -7,6 +7,7 @@ from SciQLopPlots import ProductsFlatFilterModel, ProductsModel, QueryParser, Pr
 
 from SciQLop.core.mime import decode_mime
 from SciQLop.core.ui import Metrics
+from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components import sciqlop_logging
 
 log = sciqlop_logging.getLogger(__name__)
@@ -64,7 +65,11 @@ class ProductSearchOverlay(QWidget):
         layout.addWidget(self._label, 0, Qt.AlignmentFlag.AlignCenter)
 
         self._search_box = QLineEdit()
-        self._search_box.setPlaceholderText("Search products (e.g. MMS FGM, ACE MAG B_gsm)\u2026")
+        self._search_box.setPlaceholderText(
+            "Search products (e.g. MMS FGM, ACE MAG B_gsm)\u2026")
+        self._search_box.setToolTip(rich_tooltip(
+            "Search products",
+            "Filter the product tree by name, mission, or instrument."))
         self._search_box.setFixedWidth(content_width)
         self._search_box.setStyleSheet("font-size: 14ex; padding: 1ex;")
         self._search_box.setClearButtonEnabled(True)

@@ -5,6 +5,7 @@ from SciQLopPlots import ProductsModel, ProductsModelNodeType, PlotType
 
 from SciQLop.components.plotting.ui.time_sync_panel import plot_product
 from SciQLop.core.mime import decode_mime
+from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components.sciqlop_logging import getLogger
 
 log = getLogger(__name__)
@@ -47,17 +48,27 @@ def _build_plot_target_menu(menu: QMenu, product_path: list[str], main_window):
         if panel is None:
             continue
         panel_menu = menu.addMenu(panel_name)
+        panel_menu.setToolTipsVisible(True)
         plots = panel.plots()
         for i, plot_widget in enumerate(plots):
             graph_names = [g.name for g in plot_widget.plottables()]
             label = ", ".join(graph_names) if graph_names else f"Plot {i + 1}"
             panel_menu.addAction(label, lambda p=plot_widget, pp=product_path: plot_product(p, pp))
         panel_menu.addSeparator()
-        panel_menu.addAction("+ New plot",
-                             lambda p=panel, pp=product_path: plot_product(p, pp, plot_type=PlotType.TimeSeries))
+        new_plot = panel_menu.addAction(
+            "+ New plot",
+            lambda p=panel, pp=product_path: plot_product(
+                p, pp, plot_type=PlotType.TimeSeries))
+        new_plot.setToolTip(rich_tooltip(
+            "New plot in this panel",
+            "Add this product as a new plot in the panel."))
 
     menu.addSeparator()
-    menu.addAction("+ New panel", lambda pp=product_path: _plot_in_new_panel(pp, main_window))
+    new_panel = menu.addAction(
+        "+ New panel",
+        lambda pp=product_path: _plot_in_new_panel(pp, main_window))
+    new_panel.setToolTip(rich_tooltip(
+        "New panel", "Open this product in a brand-new plot panel."))
 
 
 def _plot_in_new_panel(product_path: list[str], main_window):
@@ -91,5 +102,6 @@ def _on_context_menu(tree: QTreeView, pos, main_window):
 
     menu = QMenu(tree)
     menu.setTitle("Plot in...")
+    menu.setToolTipsVisible(True)
     _build_plot_target_menu(menu, product_path, main_window)
     menu.exec(tree.viewport().mapToGlobal(pos))
