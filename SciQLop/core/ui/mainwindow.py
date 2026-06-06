@@ -145,6 +145,7 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
     def _setup_side_panels(self):
         self.productTree = ProductsView(self)
+        self.productTree.setWindowTitle("Products")
         self.productTree.setWindowIcon(theme_icon("tree"))
         self.add_side_pan(self.productTree)
 
@@ -180,6 +181,7 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self.add_side_pan(self.settings_panel)
 
         self.properties_panel = PropertiesPanel(self)
+        self.properties_panel.setWindowTitle("Properties")
         self.properties_panel.setWindowIcon(theme_adapted_icon("plot_properties"))
         self.add_side_pan(self.properties_panel)
         from SciQLop.components.plotting.ui.graph_context_inspector import (
