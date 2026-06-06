@@ -15,6 +15,7 @@ from SciQLop.components.workspaces.backend.workspace_project import (
     _normalize_url_requirement,
     _slugify,
     generate_pyproject_toml,
+    host_provided_overrides,
 )
 
 
@@ -258,6 +259,49 @@ class TestGeneratePyprojectToml:
             assert not any(_extract_package_name(d) == "sciqlop" for d in deps)
             assert "numpy>=1.24" in deps
             assert "matplotlib>=3.8" in deps
+
+    def test_transitive_host_packages_overridden_out(self):
+        """A plugin wheel's transitive ``Requires-Dist: SciQLop`` must be dropped
+        via ``override-dependencies`` — direct-dep stripping doesn't reach it, so
+        without the override uv pulls a mismatched SciQLop (and its pyside6/
+        speasy/shiboken6 stack) from PyPI into the venv on a .dev build."""
+        try:
+            import tomllib
+        except ImportError:
+            pytest.skip("tomllib not available")
+
+        manifest = WorkspaceManifest(name="Transitive")
+        # A wheel-URL plugin whose base name is NOT "sciqlop" (so it survives the
+        # direct-dep filter) but which transitively requires SciQLop.
+        plugin_deps = [
+            "https://github.com/SciQLop/sciqlop-plugins/releases/download/"
+            "sciqlop_claude/v0.1.0/sciqlop_claude-0.1.0-py3-none-any.whl"
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "pyproject.toml"
+            generate_pyproject_toml(manifest, plugin_deps, output)
+
+            with open(output, "rb") as f:
+                data = tomllib.load(f)
+
+            overrides = data["tool"]["uv"]["override-dependencies"]
+            assert any(o.startswith("sciqlop ") for o in overrides)
+            # Each override must carry an always-false marker so it is dropped.
+            sciqlop_override = next(o for o in overrides if o.startswith("sciqlop "))
+            assert "python_version < '0'" in sciqlop_override
+
+    def test_host_provided_overrides_cover_every_host_package(self):
+        from SciQLop.components.workspaces.backend.workspace_project import (
+            _HOST_PROVIDED_PACKAGES,
+        )
+        overrides = host_provided_overrides()
+        assert len(overrides) == len(_HOST_PROVIDED_PACKAGES)
+        for pkg in _HOST_PROVIDED_PACKAGES:
+            assert any(o.startswith(f"{pkg} ;") for o in overrides)
+        # Always-false marker, single-quoted so it stays valid inside a
+        # double-quoted TOML / requirements entry.
+        assert all("python_version < '0'" in o for o in overrides)
 
     def test_environments_restricted_to_supported_platforms(self):
         try:

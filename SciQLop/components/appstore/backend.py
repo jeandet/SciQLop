@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import tempfile
 import threading
 import urllib.request
 from importlib.metadata import PackageNotFoundError, distribution
+from pathlib import Path
 
 import packaging.specifiers
 import packaging.version
@@ -15,6 +18,10 @@ from PySide6.QtCore import QObject, Signal, Slot
 import SciQLop
 from SciQLop.components.sciqlop_logging import getLogger
 from SciQLop.components.workspaces.backend.uv import uv_command
+from SciQLop.components.workspaces.backend.workspace_project import (
+    _base_constraints,
+    host_provided_overrides,
+)
 
 log = getLogger(__name__)
 
@@ -85,14 +92,36 @@ def _installed_version(package_name: str) -> str | None:
         return None
 
 
-def _uv_install_cmd(pip_spec: str) -> list[str]:
+def _uv_install_cmd(pip_spec: str, override_file: str | None = None,
+                    constraint_file: str | None = None) -> list[str]:
     """uv command to install a plugin, trusting the platform certificate store.
 
     ``--native-tls`` lets uv use the OS certificate store, which is where a
     corporate proxy's MITM root CA lives — without it uv rejects the proxy's
     intercepted certificate and the install fails.
+
+    ``--override``/``--constraint`` keep the install from pulling host-provided
+    packages (SciQLop and the pinned base stack) from PyPI — without them uv
+    resolves the wheel's transitive ``Requires-Dist: SciQLop`` against PyPI,
+    dragging a mismatched SciQLop + pyside6/speasy/shiboken6 into the workspace
+    venv (the install the user reported as failing on a ``.dev`` build).
     """
-    return uv_command("pip", "install", "--native-tls", pip_spec)
+    args = ["pip", "install", "--native-tls"]
+    if override_file:
+        args += ["--override", override_file]
+    if constraint_file:
+        args += ["--constraint", constraint_file]
+    args.append(pip_spec)
+    return uv_command(*args)
+
+
+def _write_requirements_file(directory: str, filename: str, lines: list[str]) -> str | None:
+    """Write *lines* to ``directory/filename``; return its path, or None if empty."""
+    if not lines:
+        return None
+    path = os.path.join(directory, filename)
+    Path(path).write_text("\n".join(lines) + "\n")
+    return path
 
 
 def _uv_uninstall_cmd(dist_name: str) -> list[str]:
@@ -217,7 +246,13 @@ class AppStoreBackend(QObject):
                 return
             try:
                 pip_spec = latest["pip"]
-                subprocess.run(_uv_install_cmd(pip_spec), check=True, capture_output=True, text=True)
+                with tempfile.TemporaryDirectory() as isolation_dir:
+                    override_file = _write_requirements_file(
+                        isolation_dir, "overrides.txt", host_provided_overrides())
+                    constraint_file = _write_requirements_file(
+                        isolation_dir, "constraints.txt", _base_constraints())
+                    cmd = _uv_install_cmd(pip_spec, override_file, constraint_file)
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
                 dist_name = _package_name_from_pip(pip_spec) or name
                 _save_installed_package(name, pip_spec, dist_name)
                 self.install_finished.emit(json.dumps({"name": name, "ok": True, "version": latest["version"]}))

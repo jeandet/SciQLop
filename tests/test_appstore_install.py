@@ -13,6 +13,8 @@ Two regressions guarded here:
    instead of a bare "Failed", otherwise the failure is undiagnosable.
 """
 import subprocess
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +22,7 @@ from SciQLop.components.appstore.backend import (
     _uv_install_cmd,
     _uv_uninstall_cmd,
     _error_detail,
+    _write_requirements_file,
 )
 from SciQLop.components.workspaces.backend.uv import find_uv
 
@@ -35,6 +38,44 @@ class TestNativeTls:
         cmd = _uv_uninstall_cmd("some-plugin")
         assert "--native-tls" in cmd
         assert cmd[-1] == "some-plugin"
+
+
+@pytest.mark.skipif(find_uv() is None, reason="uv binary not available")
+class TestHostIsolation:
+    """The appstore install must not pull host-provided packages (SciQLop and
+    the pinned base stack) from PyPI. A plugin wheel declares
+    ``Requires-Dist: SciQLop>=X``; without an override uv resolves it against
+    PyPI and drags a mismatched SciQLop + pyside6/speasy/shiboken6 into the
+    workspace venv — the failure a user hit installing onto a 0.12.1.dev0 build.
+    """
+
+    def test_install_cmd_passes_override_and_constraint(self):
+        cmd = _uv_install_cmd(
+            "some-plugin==1.2.3",
+            override_file="/tmp/overrides.txt",
+            constraint_file="/tmp/constraints.txt",
+        )
+        assert cmd[cmd.index("--override") + 1] == "/tmp/overrides.txt"
+        assert cmd[cmd.index("--constraint") + 1] == "/tmp/constraints.txt"
+        # The package spec must stay last so uv treats it as the install target.
+        assert cmd[-1] == "some-plugin==1.2.3"
+
+    def test_install_cmd_omits_flags_when_no_files(self):
+        cmd = _uv_install_cmd("some-plugin==1.2.3")
+        assert "--override" not in cmd
+        assert "--constraint" not in cmd
+
+
+class TestWriteRequirementsFile:
+    def test_returns_none_for_empty_lines(self):
+        with tempfile.TemporaryDirectory() as d:
+            assert _write_requirements_file(d, "x.txt", []) is None
+
+    def test_writes_file_and_returns_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = _write_requirements_file(d, "overrides.txt", ["sciqlop ; python_version < '0'"])
+            assert path is not None
+            assert Path(path).read_text() == "sciqlop ; python_version < '0'\n"
 
 
 class TestErrorDetail:

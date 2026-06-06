@@ -62,6 +62,24 @@ def _base_constraints() -> List[str]:
     return constraints
 
 
+def host_provided_overrides() -> List[str]:
+    """Return ``override-dependencies`` entries that neutralise host-provided packages.
+
+    A requirement carrying an always-false environment marker is dropped from
+    resolution entirely. We use it to remove *transitive* ``SciQLop`` requirements
+    that plugin wheels declare (``Requires-Dist: SciQLop>=X``): the host install
+    provides SciQLop through ``--system-site-packages``, and dev-cycle ``.dev``
+    versions don't exist on PyPI, so letting uv resolve them pulls a mismatched
+    SciQLop (plus its whole pyside6/speasy/shiboken6 stack) into the venv — which
+    either shadows the host binaries or makes resolution unsatisfiable.
+
+    Stripping direct deps (``_HOST_PROVIDED_PACKAGES`` above) only covers
+    manifest/plugin declarations, not the transitive wheel requirements; this
+    override closes that gap and is shared with the appstore install path.
+    """
+    return [f"{pkg} ; python_version < '0'" for pkg in sorted(_HOST_PROVIDED_PACKAGES)]
+
+
 def _slugify(name: str) -> str:
     """Convert a human-readable name to a URL/package-safe slug.
 
@@ -177,6 +195,13 @@ def generate_pyproject_toml(
     else:
         constraint_block = ""
 
+    overrides = host_provided_overrides()
+    if overrides:
+        override_lines = "\n".join(f'    "{o}",' for o in overrides)
+        override_block = f"override-dependencies = [\n{override_lines}\n]"
+    else:
+        override_block = ""
+
     # Restrict uv resolution to platforms SciQLop actually targets so that
     # marker splits like sys_platform == 'emscripten' (which has no wheels for
     # SciQLop or many native deps) don't break workspace dependency sync.
@@ -201,6 +226,7 @@ requires-python = ">={sys.version_info.major}.{sys.version_info.minor}"
 [tool.uv]
 package = false
 {environments_block}
+{override_block}
 {constraint_block}
 """
 
