@@ -7,6 +7,7 @@ from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLineEdit, QListView, QPushButton,
 )
+from SciQLop.core.ui.tooltips import rich_tooltip
 
 
 @dataclass
@@ -55,6 +56,13 @@ class ColumnVisibilityPopover(QFrame):
         self._show_all_btn.clicked.connect(self.show_all)
         self._hide_all_btn.clicked.connect(self.hide_all)
         self._reset_btn.clicked.connect(self.reset_requested.emit)
+        self._show_all_btn.setToolTip(rich_tooltip(
+            "Show all", "Make every column visible."))
+        self._hide_all_btn.setToolTip(rich_tooltip(
+            "Hide all", "Hide every column except frozen ones."))
+        self._reset_btn.setToolTip(rich_tooltip(
+            "Reset",
+            "Restore the default column visibility and order."))
 
         btn_row = QHBoxLayout()
         btn_row.addWidget(self._show_all_btn)

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QKeySequence, QPen, QColor, QShortcut
+from SciQLop.core.ui.tooltips import rich_tooltip
 
 import math
 from datetime import datetime, timezone, timedelta
@@ -213,20 +214,31 @@ class CatalogBrowser(QWidget):
         self._add_event_btn = QPushButton("Add Event")
         self._add_event_btn.setVisible(False)
         self._add_event_btn.clicked.connect(self._on_add_event)
+        self._add_event_btn.setToolTip(rich_tooltip(
+            "Add event",
+            "Create a new event in the target catalog."))
 
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.setVisible(False)
         self._delete_btn.clicked.connect(self._on_delete)
+        self._delete_btn.setToolTip(rich_tooltip(
+            "Delete",
+            "Delete the selected events from the catalog."))
 
         self._columns_btn = QToolButton()
         self._columns_btn.setText("Columns")
-        self._columns_btn.setToolTip("Show / hide / reorder columns")
+        self._columns_btn.setToolTip(rich_tooltip(
+            "Columns",
+            "Show, hide, or reorder the event-table columns."))
         self._columns_btn.setAutoRaise(True)
         self._columns_btn.clicked.connect(lambda: self._open_column_popover())
 
         self._add_attr_btn = QToolButton()
         self._add_attr_btn.setText("+ Attribute")
-        self._add_attr_btn.setToolTip("Add a new metadata attribute to the selected events (or all events if no selection)")
+        self._add_attr_btn.setToolTip(rich_tooltip(
+            "Add attribute",
+            "Add a metadata attribute to the selected events"
+            " (or all events if none are selected)."))
         self._add_attr_btn.setAutoRaise(True)
         self._add_attr_btn.clicked.connect(self._on_add_attribute_clicked)
 
