@@ -2,6 +2,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QComboBox, QLabel
 
 from SciQLop.core.ui import fit_combo_to_content
+from SciQLop.core.ui.tooltips import rich_tooltip
 
 
 CATALOG_MODES = [("View", "view"), ("Jump", "jump"), ("Edit", "edit")]
@@ -11,7 +12,9 @@ def _make_mode_combo(parent):
     w = QComboBox(parent)
     for label, value in CATALOG_MODES:
         w.addItem(label, userData=value)
-    w.setToolTip("Catalog interaction mode")
+    w.setToolTip(rich_tooltip(
+        "Catalog interaction mode",
+        "How clicks on this panel interact with catalog events."))
     fit_combo_to_content(w)
     return w
 
@@ -35,7 +38,9 @@ class CatalogChrome(QWidget):
         self._mode_label = QLabel("Catalog:", self)
         self._mode_combo = _make_mode_combo(self)
         self._target_combo = QComboBox(self)
-        self._target_combo.setToolTip("Target catalog for new events")
+        self._target_combo.setToolTip(rich_tooltip(
+            "Target catalog",
+            "Catalog that newly created events are added to."))
         self._target_combo.setVisible(False)
 
         layout.addWidget(self._mode_label)

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QPushButton, QHBoxLayout,
 )
 
+from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components.plotting.backend.graph_knobs import GraphKnobState
 from SciQLop.components.plotting.ui.knob_inspector.delegates import (
     KnobDelegate, delegate_for_spec,
@@ -47,7 +48,10 @@ class KnobsSection(QWidget):
         self._apply_btn.clicked.connect(self.apply_manual)
         btn_row.addWidget(self._apply_btn)
         self._reset_btn = QPushButton("⟳")
-        self._reset_btn.setToolTip("Reset all parameters to defaults")
+        self._reset_btn.setToolTip(rich_tooltip(
+            "Reset parameters",
+            "Restore all parameters in this section to their"
+            " defaults."))
         self._reset_btn.clicked.connect(self.reset_to_defaults)
         btn_row.addWidget(self._reset_btn)
         outer.addLayout(btn_row)

@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QDateTimeEdit, QComboBox, QP
 
 from SciQLop.core import TimeRange
 from SciQLop.core.ui import Metrics, fit_combo_to_content
+from SciQLop.core.ui.tooltips import rich_tooltip
 
 DURATION_PRESETS = [("1m", 60), ("1h", 3600), ("12h", 43200), ("1d", 86400), ("7d", 604800)]
 ZOOM_LIMIT_PRESETS = [("1h", 3600.0), ("1d", 86400.0), ("1w", 604800.0), ("1y", 365.25 * 86400), ("Unlimited", 0.0)]
@@ -35,15 +36,19 @@ def _make_zoom_limit_combo(parent):
     for label, _ in ZOOM_LIMIT_PRESETS:
         w.addItem(label)
     w.setCurrentText(_default_zoom_limit_label())
-    w.setToolTip("Maximum zoom-out range")
+    w.setToolTip(rich_tooltip(
+        "Maximum zoom-out range",
+        "Limits how far you can zoom out on the time axis."))
     fit_combo_to_content(w)
     return w
 
 
-def _make_nav_button(text, parent):
+def _make_nav_button(text, parent, tooltip=""):
     b = QPushButton(text, parent)
     b.setFixedWidth(Metrics.em(2.5))
     b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    if tooltip:
+        b.setToolTip(tooltip)
     return b
 
 
@@ -68,12 +73,25 @@ class TimeRangeBar(QWidget):
 
         self._start_picker = _make_start_picker(self)
         self._duration_combo = _make_duration_combo(self)
-        self._fast_backward_btn = _make_nav_button("|◀", self)
-        self._backward_btn = _make_nav_button("◀", self)
-        self._forward_btn = _make_nav_button("▶", self)
-        self._fast_forward_btn = _make_nav_button("▶|", self)
+        self._fast_backward_btn = _make_nav_button("|◀", self, rich_tooltip(
+            "Jump back",
+            "Move back by 5× the current duration."))
+        self._backward_btn = _make_nav_button("◀", self, rich_tooltip(
+            "Step back", "Move back by one duration."))
+        self._forward_btn = _make_nav_button("▶", self, rich_tooltip(
+            "Step forward", "Move forward by one duration."))
+        self._fast_forward_btn = _make_nav_button("▶|", self, rich_tooltip(
+            "Jump forward",
+            "Move forward by 5× the current duration."))
         self._zoom_limit_combo = _make_zoom_limit_combo(self)
         self._zoom_limit_label = QLabel("Max:", self)
+
+        self._duration_combo.setToolTip(rich_tooltip(
+            "Time window duration",
+            "Length of the time range shown in this panel."))
+        self._start_picker.setToolTip(rich_tooltip(
+            "Start time (UTC)",
+            "Start of the time range shown in this panel."))
 
         layout.addWidget(self._fast_backward_btn)
         layout.addWidget(self._backward_btn)

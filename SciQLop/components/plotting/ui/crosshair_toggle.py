@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QToolButton
 
 from SciQLop.core.ui import Metrics
+from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components.theming import theme_adapted_icon
 
 
@@ -32,4 +33,8 @@ class CrosshairToggle(QToolButton):
         on = self.isChecked()
         self.setIcon(theme_adapted_icon("my_location" if on else "location_disabled"))
         state = "on" if on else "off"
-        self.setToolTip(f"Crosshair and hover tooltip: {state} (Ctrl+Shift+H)")
+        self.setToolTip(rich_tooltip(
+            "Crosshair & hover tooltip",
+            f"Currently {state}. Shows a crosshair and value read-out"
+            " as you move over plots.",
+            "Ctrl+Shift+H"))
