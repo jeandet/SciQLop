@@ -359,5 +359,23 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, "&quot;");
+}
+
+// Card thumbnail: explicit image, else first screenshot, else null (emoji).
+function cardImageUrl(pkg) {
+    if (pkg.image) return pkg.image;
+    var shots = pkg.screenshots || [];
+    return shots.length > 0 ? shots[0] : null;
+}
+
+// Carousel list: screenshots if any, else the single image, else empty.
+function screenshotUrls(pkg) {
+    var shots = pkg.screenshots || [];
+    if (shots.length > 0) return shots.slice();
+    return pkg.image ? [pkg.image] : [];
+}
+
 // --- Start ---
 init();
