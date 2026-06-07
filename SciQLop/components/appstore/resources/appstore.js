@@ -216,9 +216,12 @@ function initCarousel(root) {
         dots.forEach(function(d, idx) { d.classList.toggle("active", idx === current); });
     }
 
-    function dropSlide(slide, idx) {
+    function dropSlide(slide) {
         slide.remove();
-        if (dots[idx]) dots[idx].remove();
+        // Dots are positional indicators; drop one (the last) to keep dot
+        // count == slide count, robust to any number/order of failures.
+        var allDots = carousel.querySelectorAll(".carousel-dot");
+        if (allDots.length > 0) allDots[allDots.length - 1].remove();
         slides = carousel.querySelectorAll(".carousel-slide");
         dots = carousel.querySelectorAll(".carousel-dot");
         if (slides.length === 0) {
@@ -242,9 +245,9 @@ function initCarousel(root) {
     dots.forEach(function(dot, idx) {
         dot.addEventListener("click", function() { show(idx); });
     });
-    slides.forEach(function(slide, idx) {
+    slides.forEach(function(slide) {
         slide.addEventListener("click", function() { openLightbox(slide.src); });
-        slide.addEventListener("error", function() { dropSlide(slide, idx); });
+        slide.addEventListener("error", function() { dropSlide(slide); });
     });
 }
 
