@@ -321,6 +321,18 @@ function hideDetails() {
     }
 }
 
+function openLightbox(src) {
+    var lb = document.getElementById("lightbox");
+    document.getElementById("lightbox-img").src = src;
+    lb.classList.remove("hidden");
+}
+
+function closeLightbox() {
+    var lb = document.getElementById("lightbox");
+    lb.classList.add("hidden");
+    document.getElementById("lightbox-img").src = "";
+}
+
 // --- Selection ---
 
 function selectCard(card) {
@@ -352,8 +364,16 @@ document.addEventListener("DOMContentLoaded", function() {
 
     document.getElementById("details-close").addEventListener("click", hideDetails);
 
+    document.getElementById("lightbox").addEventListener("click", closeLightbox);
+
     document.addEventListener("keydown", function(e) {
-        if (e.key === "Escape") hideDetails();
+        if (e.key !== "Escape") return;
+        var lb = document.getElementById("lightbox");
+        if (lb && !lb.classList.contains("hidden")) {
+            closeLightbox();
+            return;
+        }
+        hideDetails();
     });
 
     document.body.addEventListener("click", function(e) {
