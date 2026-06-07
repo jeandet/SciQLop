@@ -11,6 +11,12 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px;
+    transition: padding-right 0.2s ease;
+}
+
+/* When the details panel is open, make room for it so it never covers cards. */
+body.details-open {
+    padding-right: 436px;
 }
 
 /* --- Tab bar --- */
@@ -247,8 +253,29 @@ body {
     transform: translateX(100%);
 }
 
+#details-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--Borders);
+    border-radius: 4px;
+    background: var(--Button);
+    color: var(--ButtonText);
+    font-size: 1.1em;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#details-close:hover {
+    background: var(--Highlight);
+    color: var(--HighlightedText);
+}
+
 #details-panel h2 {
     margin-bottom: 8px;
+    padding-right: 36px;
 }
 
 #details-panel hr {

@@ -156,6 +156,11 @@ function createPackageCard(pkg) {
         '</div>';
 
     card.addEventListener("click", function() {
+        // Clicking the already-selected card toggles the details panel closed.
+        if (card === selectedCard) {
+            hideDetails();
+            return;
+        }
         selectCard(card);
         showPackageDetails(pkg);
     });
@@ -234,6 +239,7 @@ function showPackageDetails(pkg) {
 
     panel.classList.remove("hidden");
     panel.classList.add("visible");
+    document.body.classList.add("details-open");
 }
 
 function onInstallFinished(json_str) {
@@ -296,6 +302,7 @@ function hideDetails() {
     var panel = document.getElementById("details-panel");
     panel.classList.remove("visible");
     panel.classList.add("hidden");
+    document.body.classList.remove("details-open");
     if (selectedCard) {
         selectedCard.classList.remove("selected");
         selectedCard = null;
@@ -329,6 +336,12 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("sort-select").addEventListener("change", function() {
         activeSort = this.value;
         renderCards();
+    });
+
+    document.getElementById("details-close").addEventListener("click", hideDetails);
+
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") hideDetails();
     });
 
     document.body.addEventListener("click", function(e) {
