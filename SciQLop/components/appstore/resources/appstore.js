@@ -143,8 +143,12 @@ function createPackageCard(pkg) {
         badgeHtml = '<span class="status-badge update">Update available</span>';
     }
 
+    var thumbUrl = cardImageUrl(pkg);
+    var imageInner = thumbUrl
+        ? '<img class="card-image" src="' + escapeAttr(thumbUrl) + '">'
+        : '<div class="card-image placeholder">' + icon + '</div>';
     card.innerHTML =
-        '<div class="card-image-wrapper"><div class="card-image placeholder">' + icon + '</div></div>' +
+        '<div class="card-image-wrapper">' + imageInner + '</div>' +
         '<div class="card-body">' +
             '<span class="card-badge">' + escapeHtml(type) + '</span>' +
             badgeHtml +
@@ -154,6 +158,14 @@ function createPackageCard(pkg) {
                 (starsHtml ? ' \u00B7 ' + starsHtml : '') +
             '</div>' +
         '</div>';
+
+    var thumbEl = card.querySelector("img.card-image");
+    if (thumbEl) {
+        thumbEl.addEventListener("error", function() {
+            var wrap = thumbEl.parentNode;
+            if (wrap) wrap.innerHTML = '<div class="card-image placeholder">' + icon + '</div>';
+        });
+    }
 
     card.addEventListener("click", function() {
         // Clicking the already-selected card toggles the details panel closed.
