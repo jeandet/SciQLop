@@ -179,6 +179,75 @@ function createPackageCard(pkg) {
     return card;
 }
 
+// --- Carousel ---
+
+function renderCarousel(urls) {
+    if (urls.length === 0) return "";
+    var slides = urls.map(function(u, i) {
+        return '<img class="carousel-slide' + (i === 0 ? ' active' : '') +
+               '" src="' + escapeAttr(u) + '">';
+    }).join("");
+    var nav = "";
+    var dots = "";
+    if (urls.length > 1) {
+        nav = '<button class="carousel-arrow prev" data-dir="-1" aria-label="Previous">‹</button>' +
+              '<button class="carousel-arrow next" data-dir="1" aria-label="Next">›</button>';
+        dots = '<div class="carousel-dots">' + urls.map(function(u, i) {
+            return '<span class="carousel-dot' + (i === 0 ? ' active' : '') + '"></span>';
+        }).join("") + '</div>';
+    }
+    return '<div class="carousel" id="carousel">' +
+               '<div class="carousel-viewport">' + slides + nav + '</div>' +
+               dots +
+           '</div>';
+}
+
+function initCarousel(root) {
+    var carousel = root.querySelector("#carousel");
+    if (!carousel) return;
+    var slides = carousel.querySelectorAll(".carousel-slide");
+    var dots = carousel.querySelectorAll(".carousel-dot");
+    var current = 0;
+
+    function show(i) {
+        if (slides.length === 0) return;
+        current = (i + slides.length) % slides.length;
+        slides.forEach(function(s, idx) { s.classList.toggle("active", idx === current); });
+        dots.forEach(function(d, idx) { d.classList.toggle("active", idx === current); });
+    }
+
+    function dropSlide(slide, idx) {
+        slide.remove();
+        if (dots[idx]) dots[idx].remove();
+        slides = carousel.querySelectorAll(".carousel-slide");
+        dots = carousel.querySelectorAll(".carousel-dot");
+        if (slides.length === 0) {
+            carousel.style.display = "none";
+            return;
+        }
+        if (slides.length === 1) {
+            carousel.querySelectorAll(".carousel-arrow").forEach(function(a) { a.style.display = "none"; });
+            var dotsWrap = carousel.querySelector(".carousel-dots");
+            if (dotsWrap) dotsWrap.style.display = "none";
+        }
+        show(Math.min(current, slides.length - 1));
+    }
+
+    carousel.querySelectorAll(".carousel-arrow").forEach(function(btn) {
+        btn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            show(current + parseInt(btn.dataset.dir, 10));
+        });
+    });
+    dots.forEach(function(dot, idx) {
+        dot.addEventListener("click", function() { show(idx); });
+    });
+    slides.forEach(function(slide, idx) {
+        slide.addEventListener("click", function() { openLightbox(slide.src); });
+        slide.addEventListener("error", function() { dropSlide(slide, idx); });
+    });
+}
+
 // --- Details panel ---
 
 function showPackageDetails(pkg) {
@@ -218,6 +287,7 @@ function showPackageDetails(pkg) {
 
     var content = document.getElementById("details-content");
     content.innerHTML =
+        renderCarousel(screenshotUrls(pkg)) +
         '<div class="details-field"><label>Type</label><span><span class="card-badge">' + escapeHtml(type) + '</span></span></div>' +
         '<div class="details-field"><label>Author</label><span>' + escapeHtml(pkg.author) + '</span></div>' +
         '<div class="details-field"><label>License</label><span>' + escapeHtml(pkg.license || "\u2014") + '</span></div>' +
@@ -248,6 +318,8 @@ function showPackageDetails(pkg) {
             backend.uninstall_package(unBtn.dataset.name);
         });
     }
+
+    initCarousel(content);
 
     panel.classList.remove("hidden");
     panel.classList.add("visible");
