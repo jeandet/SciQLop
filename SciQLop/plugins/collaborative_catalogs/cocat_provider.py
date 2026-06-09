@@ -371,9 +371,14 @@ class CocatCatalogProvider(CatalogProvider):
     def catalogs(self) -> list[Catalog]:
         return list(self._catalog_map.values())
 
+    def _warn_room_unavailable(self, action: str, catalog: Catalog) -> None:
+        log.warning("Cannot %s in catalog '%s': collaborative room unavailable "
+                    "(offline or not logged in)", action, catalog.name)
+
     def add_event(self, catalog: Catalog, event: CatalogEvent) -> None:
         cocat_cat = self._cocat_catalogue(catalog)
         if cocat_cat is None:
+            self._warn_room_unavailable("add event", catalog)
             return
         room = self._room_for_catalog(catalog)
         # cocat splits typed params (tags/products/rating) from free-form
@@ -394,6 +399,7 @@ class CocatCatalogProvider(CatalogProvider):
     def remove_event(self, catalog: Catalog, event: CatalogEvent) -> None:
         cocat_cat = self._cocat_catalogue(catalog)
         if cocat_cat is None:
+            self._warn_room_unavailable("remove event", catalog)
             return
         self._remove_event(catalog, event)
         if isinstance(event, CocatEvent):

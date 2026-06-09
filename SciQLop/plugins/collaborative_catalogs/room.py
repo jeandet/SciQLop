@@ -18,12 +18,16 @@ class Room(QObject):
 
     @property
     def catalogues(self) -> List[str]:
-        return [
-            cat.name for cat in self._client.db.catalogues
-        ]
+        db = self.db
+        if db is None:
+            return []
+        return [cat.name for cat in db.catalogues]
 
     def get_catalogue(self, name: str):
-        return self._client.db.get_catalogue(name)
+        db = self.db
+        if db is None:
+            return None
+        return db.get_catalogue(name)
 
     async def close(self):
         await self._client.leave_room()
