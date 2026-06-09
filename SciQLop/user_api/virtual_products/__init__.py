@@ -3,6 +3,7 @@ from enum import Enum
 
 from SciQLop.components.plotting.backend.easy_provider import EasyVector as _EasyVector, EasyScalar as _EasyScalar, \
     EasySpectrogram as _EasySpectrogram, EasyMultiComponent as _EasyMultiComponent, VirtualProductCallback
+from SciQLop.components.plotting.backend.dependencies import Depends
 
 
 class VirtualProductType(Enum):
@@ -105,6 +106,7 @@ def create_virtual_product(path: str, callback: VirtualProductCallback,
         - SciQLop will inspect the callback function to determine the input and output types to ensure it is called with the correct arguments.
         - The callback function must be deterministic if the cachable flag is set to True. This means that it must always return the same result for the same input.
         - If a virtual product already exists at the given path, it will be replaced with the new one.
+        - A callback parameter annotated ``Annotated[SpeasyVariable, Depends("a//b", pad=...)]`` declares a dependency: SciQLop resolves that product over the (optionally padded) time range and injects the result as that argument. The target may be a product path, a VirtualProduct, or a callable(start, stop).
     """
     if product_type == VirtualProductType.Scalar:
         assert labels is not None and len(labels) == 1

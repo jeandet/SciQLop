@@ -49,3 +49,9 @@ def test_extracts_multiple_dependencies():
         return None
     specs = extract_dependencies_from_callback(f)
     assert [(s.name, s.target, s.pad) for s in specs] == [("a", "x", 0.0), ("b", "y", 5.0)]
+
+
+def test_depends_is_reexported_from_user_api(qapp):
+    from SciQLop.user_api.virtual_products import Depends as PublicDepends
+    from SciQLop.components.plotting.backend.dependencies import Depends as BackendDepends
+    assert PublicDepends is BackendDepends
