@@ -126,3 +126,16 @@ def test_extended_metadata_lists_dependencies():
         return np.array([start]), np.array([0.0])
     md = _make_scalar(cb).extended_metadata(None)
     assert md["dependencies"] == [{"name": "dep", "target": "a//b", "pad": 3.0}]
+
+
+def test_dependency_resolving_to_none_raises():
+    def upstream(start, stop):
+        return None
+    def cb(start: float, stop: float,
+           dep: Annotated[SpeasyVariable, Depends(upstream)]):
+        return np.array([start]), np.array([0.0])
+    p = _make_scalar(cb)
+    with pytest.raises(RuntimeError) as ei:
+        p.get_data(None, 0.0, 1.0)
+    msg = str(ei.value)
+    assert "dep" in msg and "no data" in msg

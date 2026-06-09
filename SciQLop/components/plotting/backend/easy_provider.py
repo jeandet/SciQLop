@@ -162,11 +162,16 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
         out = {}
         for spec in self._dependency_specs:
             try:
-                out[spec.name] = resolve_dependency(spec, start, stop)
+                data = resolve_dependency(spec, start, stop)
             except Exception as e:
                 raise RuntimeError(
                     f"{self.name}: failed to resolve dependency '{spec.name}' "
                     f"({describe_target(spec.target)}): {e}") from e
+            if data is None:
+                raise RuntimeError(
+                    f"{self.name}: dependency '{spec.name}' "
+                    f"({describe_target(spec.target)}) resolved to no data")
+            out[spec.name] = data
         return out
 
     def _invoke_callback(self, start, stop, knobs):
