@@ -15,6 +15,9 @@ import jwt
 
 log = getLogger(__name__)
 
+_RECONNECT_INITIAL_BACKOFF = 1.0   # seconds
+_RECONNECT_MAX_BACKOFF = 30.0      # seconds
+
 
 def _ensure_logged_in(self):
     if not self.logged_in:
@@ -80,10 +83,12 @@ class Client(QObject):
         self._room_id = room_id
         self._client: Optional[AsyncWebSocketClient] = None
         self._cookies = httpx.Cookies()
+        self._file = None
         self._task: Optional[asyncio.Task] = None
         self._close_event = asyncio.Event()
         self._connecting_event = asyncio.Event()
         self._connected = False
+        self._ever_connected = False
 
     @property
     def logged_in(self) -> bool:
@@ -148,17 +153,18 @@ class Client(QObject):
             return data.get("rooms", [])
         return []
 
-    @ensure_login
     async def join_room(self, room_id: Optional[str] = None) -> bool:
         if room_id:
             self._room_id = room_id
         if self._connected:
             await self.leave_room()
         self._connecting_event.clear()
-        self._task = asyncio.create_task(self._join())
+        self._close_event.clear()
+        self._ever_connected = False
+        self._task = asyncio.create_task(self._run())
         await self._connecting_event.wait()
         if not self._connected:
-            log.error("Failed to join room")
+            log.error("Failed to join room %r", self._room_id)
             return False
         return True
 
@@ -172,8 +178,39 @@ class Client(QObject):
             self._task = None
             self._close_event = asyncio.Event()
 
-    @ensure_login
-    async def _join(self):
+    async def _run(self):
+        """Keep the room connected, reconnecting with exponential backoff after a
+        dropped connection, until ``leave_room`` sets ``_close_event``. The initial
+        connection is not retried: if it never succeeds, the loop gives up so the
+        caller (``join_room``) reports failure instead of spinning forever."""
+        backoff = _RECONNECT_INITIAL_BACKOFF
+        try:
+            while not self._close_event.is_set():
+                if _ensure_logged_in(self):
+                    try:
+                        await self._connect_session()
+                        backoff = _RECONNECT_INITIAL_BACKOFF
+                    except Exception as e:
+                        log.error("CoCat room %r connection error: %s", self._room_id, e)
+                        log.debug(traceback.format_exc())
+                else:
+                    log.error("CoCat room %r: not logged in", self._room_id)
+
+                if not self._ever_connected or self._close_event.is_set():
+                    break
+                log.info("CoCat room %r disconnected; reconnecting in %ss",
+                         self._room_id, backoff)
+                await self._sleep_or_close(backoff)
+                backoff = min(backoff * 2, _RECONNECT_MAX_BACKOFF)
+        finally:
+            self._task = None
+            self._connected = False
+            self._connecting_event.set()  # unblock join_room even on initial failure
+
+    async def _connect_session(self):
+        """A single websocket+file session. Returns when the socket closes; raises
+        if the connection drops. Sets ``_connecting_event`` as soon as it is up so
+        ``join_room`` unblocks while the session keeps running in the background."""
         local_file = user_data_dir("collaborative_catalogs") / self._room_id
         try:
             async with (AsyncWebSocketClient(f"/{self._prefix}room/{self._room_id}", doc=self._db.doc,
@@ -184,17 +221,19 @@ class Client(QObject):
                                         path=local_file) as file):
                 self._client = client
                 self._file = file
-                log.info('Connected to websocket')
                 self._connected = True
+                self._ever_connected = True
+                log.info("Connected to CoCat room %r", self._room_id)
                 self._connecting_event.set()
                 await self._close_event.wait()
-        except Exception as e:
-            log.error(e)
-            log.error(traceback.format_exc())
-            self._connecting_event.set()
         finally:
             self._client = None
             self._file = None
-            self._task = None
             self._connected = False
-            self._connecting_event.clear()
+
+    async def _sleep_or_close(self, timeout: float):
+        """Wait up to ``timeout`` seconds, returning early if a close is requested."""
+        try:
+            await asyncio.wait_for(self._close_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
