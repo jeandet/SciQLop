@@ -118,3 +118,11 @@ def test_unresolvable_path_raises(monkeypatch):
         p.get_data(None, 0.0, 1.0)
     msg = str(ei.value)
     assert "missing//x" in msg and "dep" in msg
+
+
+def test_extended_metadata_lists_dependencies():
+    def cb(start: float, stop: float,
+           dep: Annotated[SpeasyVariable, Depends("a//b", pad=3.0)]):
+        return np.array([start]), np.array([0.0])
+    md = _make_scalar(cb).extended_metadata(None)
+    assert md["dependencies"] == [{"name": "dep", "target": "a//b", "pad": 3.0}]

@@ -269,6 +269,10 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
             ),
             "knob_specs": [s.model_dump() if hasattr(s, "model_dump") else s
                            for s in self._knob_specs],
+            "dependencies": [
+                {"name": s.name, "target": describe_target(s.target), "pad": s.pad}
+                for s in self._dependency_specs
+            ],
         }
 
 
