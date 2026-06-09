@@ -15,7 +15,9 @@ class Depends:
     Used as ``Annotated[SpeasyVariable, Depends(target, pad=...)]``. ``target`` is a
     product path (``"a//b"`` or ``["a", "b"]``), a ``VirtualProduct`` handle, or a
     ``callable(start, stop)``. ``pad`` widens the resolution window symmetrically
-    (seconds as ``float`` or ``datetime.timedelta``)."""
+    (seconds as ``float`` or ``datetime.timedelta``). Dependencies are always
+    resolved in float epoch seconds, regardless of the consuming callback's
+    start/stop type."""
     target: DependencyTarget
     pad: Optional[Union[float, timedelta]] = None
 

@@ -11,6 +11,9 @@ from SciQLop.core.unique_names import make_simple_incr_name
 from SciQLop.core.models import products, ProductsModelNode, ProductsModelNodeType
 from SciQLop.core.enums import ParameterType
 from SciQLop.components.plotting.backend.data_provider import DataProvider, DataOrder, DataProviderReturnType
+from SciQLop.components.plotting.backend.dependencies import (
+    depends_marker, describe_target, extract_dependencies_from_callback, resolve_dependency,
+)
 from SciQLop.core import tracing
 from SciQLop.core.istp_hints import istp_metadata_to_hints
 from SciQLop.core.plot_hints import PlotHints
@@ -46,7 +49,8 @@ class ArgumentsType(Enum):
 def _positional_args_types(callback: VirtualProductCallback) -> List[type]:
     sig = signature(callback, eval_str=True)
     return [
-        v.annotation for v in sig.parameters.values() if v.default == v.empty
+        v.annotation for v in sig.parameters.values()
+        if v.default == v.empty and depends_marker(v.annotation) is None
     ]
 
 
@@ -114,6 +118,7 @@ class EasyProvider(DataProvider):
         self._knobs_model = knobs_model
         self._knobs_kwarg_name = knobs_kwarg_name
         self._knob_specs = self._compute_knob_specs(callback, knobs_model)
+        self._dependency_specs = extract_dependencies_from_callback(callback)
 
         stack = []
         arguments_type = _arguments_type(callback)
@@ -153,6 +158,17 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
             rng = fn(rng)
         return rng
 
+    def _resolve_dependencies(self, start, stop) -> dict:
+        out = {}
+        for spec in self._dependency_specs:
+            try:
+                out[spec.name] = resolve_dependency(spec, start, stop)
+            except Exception as e:
+                raise RuntimeError(
+                    f"{self.name}: failed to resolve dependency '{spec.name}' "
+                    f"({describe_target(spec.target)}): {e}") from e
+        return out
+
     def _invoke_callback(self, start, stop, knobs):
         rng = self._apply_range(start, stop)
         if self._knobs_model is not None:
@@ -160,8 +176,10 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
             kwargs = {self._knobs_kwarg_name: model}
         else:
             kwargs = dict(knobs or {})
+        n_knobs = len(kwargs)
+        kwargs.update(self._resolve_dependencies(start, stop))
         with tracing.zone("vp.callback", cat="vp",
-                          vp=self.name, n_knobs=len(kwargs),
+                          vp=self.name, n_knobs=n_knobs, n_deps=len(self._dependency_specs),
                           start=float(start), stop=float(stop)):
             if self._debug:
                 from SciQLop.user_api.virtual_products.validation import validate_and_call
