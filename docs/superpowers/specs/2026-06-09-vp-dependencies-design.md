@@ -108,9 +108,12 @@ prefetch machinery is built in this cut.
 
 ## Error handling
 
-- Unresolvable path → raise a clear error naming both the VP and the missing product.
-- Dependency resolves to `None`/empty → propagate as the VP failing, logged with the
-  dependency's parameter name and target.
+- Unresolvable path / provider error → raise a clear error naming both the VP and the
+  missing product (always, in both modes — a real misconfiguration, not a data gap).
+- Dependency resolves to `None` → **debug mode raises** a clear error (so the author sees
+  it); **normal mode discards**: the VP yields no data (callback is not invoked) and the
+  reason is logged at debug level with the dependency's parameter name and target. A
+  legitimately empty (zero-length) result is NOT treated as `None` — it flows through.
 - Cyclic dependency → depth-guard raises rather than hangs.
 - Debug mode (`debug=True`) continues to route through `validate_and_call`; dependency
   injection happens before validation so diagnostics see the real arguments.

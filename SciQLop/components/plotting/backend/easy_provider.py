@@ -158,7 +158,13 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
             rng = fn(rng)
         return rng
 
-    def _resolve_dependencies(self, start, stop) -> dict:
+    def _resolve_dependencies(self, start, stop) -> Optional[dict]:
+        """Resolve declared dependencies into callback kwargs.
+
+        Returns the kwargs dict, or ``None`` to signal the VP should yield no
+        data: a dependency that resolves to ``None`` raises in debug mode (so the
+        author sees it) but is discarded in normal mode (so a missing upstream
+        does not crash the plot panel)."""
         out = {}
         for spec in self._dependency_specs:
             try:
@@ -168,9 +174,13 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
                     f"{self.name}: failed to resolve dependency '{spec.name}' "
                     f"({describe_target(spec.target)}): {e}") from e
             if data is None:
-                raise RuntimeError(
-                    f"{self.name}: dependency '{spec.name}' "
-                    f"({describe_target(spec.target)}) resolved to no data")
+                if self._debug:
+                    raise RuntimeError(
+                        f"{self.name}: dependency '{spec.name}' "
+                        f"({describe_target(spec.target)}) resolved to no data")
+                log.debug("%s: discarding result, dependency '%s' (%s) resolved to no data",
+                          self.name, spec.name, describe_target(spec.target))
+                return None
             out[spec.name] = data
         return out
 
@@ -182,7 +192,10 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
         else:
             kwargs = dict(knobs or {})
         n_knobs = len(kwargs)
-        kwargs.update(self._resolve_dependencies(start, stop))
+        deps = self._resolve_dependencies(start, stop)
+        if deps is None:
+            return None
+        kwargs.update(deps)
         with tracing.zone("vp.callback", cat="vp",
                           vp=self.name, n_knobs=n_knobs, n_deps=len(self._dependency_specs),
                           start=float(start), stop=float(stop)):

@@ -15,10 +15,10 @@ def _isolate_products(qapp, monkeypatch):
     monkeypatch.setattr(products, "add_node", lambda *a, **k: None)
 
 
-def _make_scalar(callback):
+def _make_scalar(callback, debug=False):
     from SciQLop.components.plotting.backend.easy_provider import EasyScalar
     return EasyScalar(path=f"vp/{id(callback):x}", get_data_callback=callback,
-                      component_name="x", metadata={})
+                      component_name="x", metadata={}, debug=debug)
 
 
 def test_callable_dependency_injected_with_pad():
@@ -128,13 +128,34 @@ def test_extended_metadata_lists_dependencies():
     assert md["dependencies"] == [{"name": "dep", "target": "a//b", "pad": 3.0}]
 
 
-def test_dependency_resolving_to_none_raises():
+def test_dependency_none_discards_in_normal_mode(monkeypatch):
+    from SciQLop.components.plotting.backend import easy_provider
+    debug_calls = []
+    monkeypatch.setattr(easy_provider.log, "debug",
+                        lambda *a, **k: debug_calls.append(a))
+
+    def upstream(start, stop):
+        return None
+    called = {"cb": False}
+    def cb(start: float, stop: float,
+           dep: Annotated[SpeasyVariable, Depends(upstream)]):
+        called["cb"] = True
+        return np.array([start]), np.array([0.0])
+
+    result = _make_scalar(cb).get_data(None, 0.0, 1.0)
+    assert result is None                      # VP yields no data
+    assert called["cb"] is False               # callback never invoked
+    assert debug_calls, "expected a debug log on discard"
+    assert any("dep" in str(arg) for call in debug_calls for arg in call)
+
+
+def test_dependency_none_raises_in_debug_mode():
     def upstream(start, stop):
         return None
     def cb(start: float, stop: float,
            dep: Annotated[SpeasyVariable, Depends(upstream)]):
         return np.array([start]), np.array([0.0])
-    p = _make_scalar(cb)
+    p = _make_scalar(cb, debug=True)
     with pytest.raises(RuntimeError) as ei:
         p.get_data(None, 0.0, 1.0)
     msg = str(ei.value)
