@@ -122,6 +122,41 @@ def test_provider_events_range_query(qtbot, qapp):
     assert len(events) == 11  # days 10,11,...,20 inclusive
 
 
+def test_provider_events_range_query_includes_overlapping_long_event(qtbot, qapp):
+    """Reproducer (2026-06-09 review): the range query filtered by event START
+    only, so a long event beginning before the window but overlapping it was
+    excluded — lazy catalog overlays hid such events entirely."""
+    from SciQLop.components.catalogs.backend.provider import CatalogEvent
+    provider = _make_dummy_provider(qapp)
+    cat = provider.catalogs()[0]
+    long_event = CatalogEvent(
+        uuid="evt-long",
+        start=datetime(2020, 1, 5, tzinfo=timezone.utc),
+        stop=datetime(2020, 1, 15, tzinfo=timezone.utc),
+    )
+    provider._add_event(cat, long_event)
+
+    start = datetime(2020, 1, 10, tzinfo=timezone.utc)
+    stop = datetime(2020, 1, 20, tzinfo=timezone.utc)
+    events = provider.events(cat, start=start, stop=stop)
+    assert any(e.uuid == "evt-long" for e in events), \
+        "an event overlapping the window must be returned even if it starts before it"
+    # events entirely outside the window stay excluded
+    assert all(e.stop >= start and e.start <= stop for e in events)
+
+
+def test_provider_events_range_query_accepts_naive_datetimes(qtbot, qapp):
+    provider = _make_dummy_provider(qapp)
+    cat = provider.catalogs()[0]
+    aware = provider.events(cat,
+                            start=datetime(2020, 1, 10, tzinfo=timezone.utc),
+                            stop=datetime(2020, 1, 20, tzinfo=timezone.utc))
+    naive = provider.events(cat,
+                            start=datetime(2020, 1, 10),
+                            stop=datetime(2020, 1, 20))
+    assert [e.uuid for e in naive] == [e.uuid for e in aware]
+
+
 def test_provider_add_event(qtbot, qapp):
     from SciQLop.components.catalogs.backend.provider import CatalogEvent
     provider = _make_dummy_provider(qapp)

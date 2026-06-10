@@ -146,14 +146,20 @@ class CatalogProvider(QObject):
 
     def events(self, catalog: Catalog, start: datetime | None = None,
                stop: datetime | None = None) -> list[CatalogEvent]:
+        """Events of *catalog*, optionally restricted to those overlapping
+        the [start, stop] window (an event counts as soon as any part of it
+        falls inside the window)."""
         self._ensure_sorted(catalog.uuid)
         event_list = self._events.get(catalog.uuid, [])
         if start is None and stop is None:
             return list(event_list)
         key = lambda e: e.start
-        lo = 0 if start is None else bisect.bisect_left(event_list, start, key=key)
-        hi = len(event_list) if stop is None else bisect.bisect_right(event_list, stop, key=key)
-        return event_list[lo:hi]
+        hi = len(event_list) if stop is None else bisect.bisect_right(
+            event_list, make_utc_datetime(stop), key=key)
+        if start is None:
+            return event_list[:hi]
+        start = make_utc_datetime(start)
+        return [e for e in event_list[:hi] if e.stop >= start]
 
     def _ensure_sorted(self, catalog_uuid: str) -> None:
         if catalog_uuid not in self._needs_sort:
