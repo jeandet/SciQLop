@@ -23,7 +23,7 @@ uv run python -m SciQLop.app
 uv run pytest
 
 # Run a specific test file or test by name
-uv run pytest tests/test_creating_plots.py
+uv run pytest tests/test_catalog_provider.py
 uv run pytest -k test_virtual_products
 ```
 
