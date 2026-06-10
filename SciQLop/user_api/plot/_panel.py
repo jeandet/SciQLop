@@ -61,12 +61,17 @@ def _to_sqp_orientation(orientation: Orientation) -> _Qt.Orientation:
 
 
 def _speasy_variable_to_arrays(v: _SpeasyVariable):
-    """Extract (x, y) or (x, y, z) float64 arrays from a SpeasyVariable."""
+    """Extract (x, y) or (x, y, z) float64 arrays from a SpeasyVariable.
+
+    ``ascontiguousarray(dtype=float64)`` only copies when the source is not
+    already float64 and C-contiguous (same convention as
+    ``ensure_arrays_of_double``)."""
     time = _datetime64_to_epoch(v.time)
+    values = _np.ascontiguousarray(v.values, dtype=_np.float64)
     numeric_axes = [ax for ax in v.axes[1:] if _np.issubdtype(ax.values.dtype, _np.number)]
     if numeric_axes:
-        return time, numeric_axes[0].values.astype(_np.float64), v.values.astype(_np.float64)
-    return time, v.values.astype(_np.float64)
+        return time, _np.ascontiguousarray(numeric_axes[0].values, dtype=_np.float64), values
+    return time, values
 
 
 def _maybe_product(*args, **kwargs) -> Option[List[str]]:
