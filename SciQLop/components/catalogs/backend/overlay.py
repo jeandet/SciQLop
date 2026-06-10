@@ -131,20 +131,25 @@ class CatalogOverlay(QObject):
         # A shared list (mutable) tracks the sync source to break feedback loops.
         sync_source = [None]  # 'span' or 'event'
 
-        span_debounce = QTimer(self)
-        span_debounce.setSingleShot(True)
-        span_debounce.setInterval(50)
-
         def _apply_event_to_span(e=event, s=span):
             sync_source[0] = 'event'
             s.set_range(TimeRange(e.start.timestamp(), e.stop.timestamp()))
             sync_source[0] = None
 
-        span_debounce.timeout.connect(_apply_event_to_span)
+        # The debounce timer is created on first use: most events are never
+        # edited, and one QTimer per span costs ~0.2 ms × thousands of events
+        # at overlay construction.
+        debounce = [None]
 
-        def _on_event_changed(t=span_debounce, src=sync_source):
-            if src[0] != 'span':
-                t.start()
+        def _on_event_changed(src=sync_source, t=debounce):
+            if src[0] == 'span':
+                return
+            if t[0] is None:
+                t[0] = QTimer(self)
+                t[0].setSingleShot(True)
+                t[0].setInterval(50)
+                t[0].timeout.connect(_apply_event_to_span)
+            t[0].start()
 
         def _on_span_changed(r, e=event, src=sync_source):
             if src[0] != 'event':
@@ -196,7 +201,9 @@ class CatalogOverlay(QObject):
         new_events = self._catalog.provider.events(self._catalog, start, stop)
         new_uuids = {e.uuid for e in new_events}
         current_uuids = set(self._event_by_span_id.keys())
-        self._event_colors.update(self._mapper(new_events, self._color))
+        # Assign (don't update): keeps the dict bounded to the visible window
+        # instead of accumulating colors for every event ever panned over.
+        self._event_colors = self._mapper(new_events, self._color)
 
         # Remove out-of-range spans
         for uuid in current_uuids - new_uuids:
