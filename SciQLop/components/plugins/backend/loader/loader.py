@@ -32,14 +32,21 @@ def import_from_path(module_name, file_path):
     return module
 
 
+def _bundled_plugins_dir() -> str:
+    from SciQLop import plugins
+    return os.path.dirname(os.path.realpath(plugins.__file__))
+
+
 def load_module(path, name):
     try:
-        import sys
-        # if path not in sys.path:
-        #    sys.path.insert(0, path)
-        # mod = importlib.import_module(name, "*")
-        mod = import_from_path(name, os.path.join(path, name, "__init__.py"))
-        return mod
+        if os.path.realpath(path) == _bundled_plugins_dir():
+            # Bundled plugins must live under ONE module identity. Spec-loading
+            # them as top-level `<name>` creates a second module object when
+            # anything later imports `SciQLop.plugins.<name>` (tests, notebooks)
+            # — re-running ConfigEntry registrations (duplicate-entry error)
+            # and breaking isinstance across the duplicated class sets.
+            return importlib.import_module(f"SciQLop.plugins.{name}")
+        return import_from_path(name, os.path.join(path, name, "__init__.py"))
     except Exception as e:
         log.error(f"Oups can't load {name} , {e}")
         log.error(f"Traceback: {traceback.format_exc()}")
