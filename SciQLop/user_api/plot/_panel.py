@@ -7,7 +7,6 @@ from .._annotations import experimental_api
 from PySide6.QtCore import Qt as _Qt
 from SciQLop.core import TimeRange
 from SciQLop.core import tracing as _tracing
-from SciQLop.components.sciqlop_logging import getLogger as _getLogger
 from SciQLopPlots import PlotType as _PlotType, GraphType as _GraphType, SciQLopMultiPlotPanel as _SciQLopMultiPlotPanel
 from SciQLop.components.plotting.ui.time_sync_panel import (TimeSyncPanel as _ImplTimeSyncPanel,
                                                             plot_product as _plot_product,
@@ -23,9 +22,6 @@ from speasy.products import SpeasyVariable as _SpeasyVariable
 from speasy.core import datetime64_to_epoch as _datetime64_to_epoch
 
 __all__ = ['PlotPanel', 'plot_panel', 'create_plot_panel']
-
-log = _getLogger(__name__)
-
 
 def _to_sqp_plot_type(plot_type: Union[PlotType, _PlotType]) -> _PlotType:
     if isinstance(plot_type, _PlotType):
@@ -87,6 +83,14 @@ def _maybe_callable(*args, **kwargs) -> Option[callable]:
     if "callback" in kwargs and callable(kwargs["callback"]):
         return Some(kwargs["callback"])
     return Nothing
+
+
+def _normalize_plot_index(plot_index: int, n_plots: int) -> int:
+    """Resolve Python-style negative indices and validate the range."""
+    index = plot_index + n_plots if plot_index < 0 else plot_index
+    if not 0 <= index < n_plots:
+        raise IndexError(f"plot_index {plot_index} out of range (0..{n_plots - 1})")
+    return index
 
 
 def _normalize_plot_kwargs(kwargs: dict) -> dict:
@@ -291,23 +295,27 @@ class PlotPanel:
         if len(args) == 1 and isinstance(args[0], _SpeasyVariable):
             return self.plot_data(args[0], plot_index=plot_index, **kwargs)
         if len(args) <= 1:  # product or callable
-            r = _maybe_product(*args, **kwargs).map(lambda p: self.plot_product(p, plot_index, **kwargs)).or_else(
-                _maybe_callable(*args, **kwargs).map(lambda f: self.plot_function(f, plot_index, **kwargs)))
-            if r is Nothing:
-                log.error("No product found in the arguments")
-                return None
-            return r.value
-        elif len(args) >= 2:  # likely static data plot (x, y, [z], [plot_type])
-            return self.plot_data(*args, **kwargs)
-        return None
+            product = _maybe_product(*args, **kwargs)
+            if product is not Nothing:
+                kwargs.pop("product", None)
+                return self.plot_product(product.value, plot_index, **kwargs)
+            callback = _maybe_callable(*args, **kwargs)
+            if callback is not Nothing:
+                kwargs.pop("callback", None)
+                return self.plot_function(callback.value, plot_index, **kwargs)
+            raise ValueError(
+                "plot() could not interpret its arguments: expected a product "
+                "path (str, list of str or VirtualProduct), a callable "
+                "f(start, stop), a SpeasyVariable, or data arrays (x, y[, z])")
+        # static data plot (x, y, [z])
+        return self.plot_data(*args, plot_index=plot_index, **kwargs)
 
     @on_main_thread
     def remove_plot(self, plot_index: int) -> None:
         from SciQLopPlots import SciQLopPlot
         impl = self._get_impl_or_raise()
         plots = impl.plots()
-        if not 0 <= plot_index < len(plots):
-            raise IndexError(f"plot_index {plot_index} out of range (0..{len(plots) - 1})")
+        plot_index = _normalize_plot_index(plot_index, len(plots))
         target_name = plots[plot_index].objectName()
         for child in impl.findChildren(SciQLopPlot):
             if child.objectName() == target_name:
