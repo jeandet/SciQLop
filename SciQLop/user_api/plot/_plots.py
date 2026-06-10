@@ -118,7 +118,7 @@ def to_product_path(product: AnyProductType) -> List[str]:
 class _BasePlot(Plot):
     def __init__(self, impl):
         self._impl: Optional[_SciQLopPlot] = impl
-        self._impl.destroyed.connect(self._on_destroyed)
+        self._get_impl_or_raise().destroyed.connect(self._on_destroyed)
 
     def _get_impl_or_raise(self):
         if self._impl is None:
@@ -346,7 +346,9 @@ class XYPlot(_BasePlot):
 
     @on_main_thread
     def plot(self, *args, **kwargs):
-        """Plot data on the plot, either two vectors or a product path or a function.
+        """Plot data on the plot: two vectors (x, y), three (x, y, z → colormap),
+        or a callback ``f(start, stop) -> (x, y)``. Product paths are not
+        accepted here — use ``PlotPanel.plot_product`` or ``TimeSeriesPlot.plot``.
 
         Pass ``y_axis="y2"`` to bind the resulting graph to the secondary
         y-axis (line / curve / scatter only — not colormaps).
@@ -355,17 +357,17 @@ class XYPlot(_BasePlot):
         y_axis = kwargs.pop("y_axis", "y")
         if len(args) == 1:
             if callable(args[0]):
-                return _bind_y_axis(Graph(self._impl.plot(*args, **kwargs), plot=self), y_axis)
+                return _bind_y_axis(Graph(self._get_impl_or_raise().plot(*args, **kwargs), plot=self), y_axis)
             else:
                 raise ValueError("Invalid arguments")
         elif len(args) == 2:
             return _bind_y_axis(
-                Graph(self._impl.plot(*ensure_arrays_of_double(*args), **kwargs), plot=self),
+                Graph(self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs), plot=self),
                 y_axis,
             )
         elif len(args) == 3:
             _reject_if_colormap_already_present(self._get_impl_or_raise())
-            return ColorMap(self._impl.plot(*ensure_arrays_of_double(*args), **kwargs))
+            return ColorMap(self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs))
         return None
 
     @experimental_api()
@@ -429,30 +431,30 @@ class XYPlot(_BasePlot):
     @property
     @on_main_thread
     def x_scale_type(self) -> ScaleType:
-        return _get_axis_scale_type(self._impl.x_axis())
+        return _get_axis_scale_type(self._get_impl_or_raise().x_axis())
 
     @x_scale_type.setter
     @on_main_thread
     def x_scale_type(self, scale_type: ScaleType):
-        _set_axis_scale_type(scale_type, self._impl.x_axis())
+        _set_axis_scale_type(scale_type, self._get_impl_or_raise().x_axis())
         self.replot()
 
     @property
     @on_main_thread
     def y_scale_type(self) -> ScaleType:
-        return _get_axis_scale_type(self._impl.y_axis())
+        return _get_axis_scale_type(self._get_impl_or_raise().y_axis())
 
     @y_scale_type.setter
     @on_main_thread
     def y_scale_type(self, scale_type: ScaleType):
-        _set_axis_scale_type(scale_type, self._impl.y_axis())
+        _set_axis_scale_type(scale_type, self._get_impl_or_raise().y_axis())
         self.replot()
 
     @on_main_thread
     def replot(self):
         """Replot the plot. This method is used to force a redraw of the plot.
         """
-        self._impl.replot()
+        self._get_impl_or_raise().replot()
 
     def _repr_pretty_(self, p, cycle):
         if cycle:
@@ -487,7 +489,8 @@ class TimeSeriesPlot(_BasePlot):
         args : Any
             The arguments to pass to the plot method. Can be a function or two vectors.
         kwargs : Any
-            Additional arguments to pass to the plot method. Actually unused.
+            Additional arguments forwarded to the underlying plot
+            implementation (e.g. ``labels``, ``colors``, ``y_axis``).
         Returns
         -------
         Optional[Graph]
@@ -501,7 +504,7 @@ class TimeSeriesPlot(_BasePlot):
         y_axis = kwargs.pop("y_axis", "y")
         if len(args) == 1:
             if callable(args[0]):
-                return _bind_y_axis(to_plottable(self._impl.plot(*args, **kwargs), plot=self), y_axis)
+                return _bind_y_axis(to_plottable(self._get_impl_or_raise().plot(*args, **kwargs), plot=self), y_axis)
             else:
                 return _bind_y_axis(
                     to_plottable(_plot_product(self._get_impl_or_raise(), to_product_path(args[0]), **kwargs),
@@ -580,7 +583,7 @@ class TimeSeriesPlot(_BasePlot):
     @time_range.setter
     @on_main_thread
     def time_range(self, time_range: TimeRange):
-        self._impl.set_time_range(time_range)
+        self._get_impl_or_raise().set_time_range(time_range)
 
     @property
     @on_main_thread
@@ -620,7 +623,7 @@ class ProjectionPlot:
     def __init__(self, impl):
         assert is_projection_plot(impl)
         self._impl: Optional[_SciQLopNDProjectionPlot] = impl
-        self._impl.destroyed.connect(self._on_destroyed)
+        self._get_impl_or_raise().destroyed.connect(self._on_destroyed)
 
     def _on_destroyed(self):
         self._impl = None

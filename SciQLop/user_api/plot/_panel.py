@@ -36,7 +36,7 @@ def _to_sqp_plot_type(plot_type: Union[PlotType, _PlotType]) -> _PlotType:
         raise ValueError(f"Unknown plot type {plot_type}")
 
 
-def _to_sqp_graph_type(graph_type: [GraphType, _GraphType]) -> _GraphType:
+def _to_sqp_graph_type(graph_type: Union[GraphType, _GraphType]) -> _GraphType:
     if isinstance(graph_type, _GraphType):
         return graph_type
     if graph_type == GraphType.Line:
@@ -153,7 +153,8 @@ class PlotPanel:
         product : AnyProductType
             The product to plot. This can be a string, a VirtualProduct or a list of strings.
         plot_index : int
-            The index of the plot in the panel. Defaults to -1, which means the last plot.
+            Index of an existing subplot to draw into. The default (-1, or any
+            out-of-range index) appends a new subplot to the panel.
         kwargs : dict
             extra arguments to pass to the plot function.
             - plot_type: PlotType
@@ -183,7 +184,8 @@ class PlotPanel:
         z : array-like, optional
             The Z data to plot. If not provided, a 2D plot will be created.
         plot_index : int
-            The index of the plot in the panel. Defaults to -1, which means the last plot.
+            Index of an existing subplot to draw into. The default (-1, or any
+            out-of-range index) appends a new subplot to the panel.
         kwargs : dict
             extra arguments to pass to the plot function.
             - plot_type: PlotType
@@ -281,8 +283,7 @@ class PlotPanel:
 
         impl = self._get_impl_or_raise()
         plots = impl.plots()
-        if not plots or plot_index >= len(plots):
-            raise IndexError(f"No plot at index {plot_index}")
+        plot_index = _normalize_plot_index(plot_index, len(plots))
 
         target = plots[plot_index]
         name = target.objectName()

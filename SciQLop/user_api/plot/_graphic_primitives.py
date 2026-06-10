@@ -37,7 +37,46 @@ def _default_foreground(plot_impl) -> QColor:
         return QColor("black")
 
 
-class Pixmap(Item):
+class _PlotItem(Item):
+    """Shared concrete surface for plot items: visibility toggle, removal,
+    and a friendly error once the underlying C++ item is gone."""
+
+    _impl = None
+
+    def _get_impl_or_raise(self):
+        if self._impl is None:
+            raise ValueError("The item does not exist anymore.")
+        return self._impl
+
+    @property
+    @on_main_thread
+    def visible(self) -> bool:
+        # SciQLopPlots <= 0.27 leaves SciQLopItemInterface::visible() as an
+        # unimplemented pure-virtual stub for all item classes: the getter
+        # always returns False and the setter is a silent no-op. Raise instead
+        # of lying; delegate to the C++ side once it is implemented upstream.
+        self._get_impl_or_raise()
+        raise NotImplementedError(
+            "item visibility is not implemented in SciQLopPlots yet; "
+            "use remove() to take the item off the plot")
+
+    @visible.setter
+    @on_main_thread
+    def visible(self, visible: bool):
+        self._get_impl_or_raise()
+        raise NotImplementedError(
+            "item visibility is not implemented in SciQLopPlots yet; "
+            "use remove() to take the item off the plot")
+
+    @on_main_thread
+    def remove(self) -> None:
+        """Remove this item from the plot and release C++ resources."""
+        if self._impl is not None:
+            self._impl.deleteLater()
+            self._impl = None
+
+
+class Pixmap(_PlotItem):
     """An image drawn on a plot.
     """
     @on_main_thread
@@ -74,27 +113,17 @@ class Pixmap(Item):
 
     @property
     @on_main_thread
-    def visible(self) -> bool:
-        return self._impl.visible()
-
-    @visible.setter
-    @on_main_thread
-    def visible(self, visible: bool):
-        self._impl.set_visible(visible)
-
-    @property
-    @on_main_thread
     def position(self) -> Tuple[float, float]:
-        p = self._impl.position()
+        p = self._get_impl_or_raise().position()
         return p.x(), p.y()
 
     @position.setter
     @on_main_thread
     def position(self, position: Tuple[float, float]):
-        self._impl.set_position(*position)
+        self._get_impl_or_raise().set_position(*position)
 
 
-class Ellipse(Item):
+class Ellipse(_PlotItem):
     """An ellipse on a plot.
 
     The default line colour follows the plot's palette so the ellipse stays
@@ -146,79 +175,73 @@ class Ellipse(Item):
 
     @property
     @on_main_thread
-    def visible(self) -> bool:
-        return self._impl.visible()
-
-    @visible.setter
-    @on_main_thread
-    def visible(self, visible: bool):
-        self._impl.set_visible(visible)
-
-    @property
-    @on_main_thread
     def position(self) -> Tuple[float, float]:
-        p = self._impl.position()
+        p = self._get_impl_or_raise().position()
         return p.x(), p.y()
 
     @position.setter
     @on_main_thread
     def position(self, position: Tuple[float, float]):
-        self._impl.set_position(*position)
+        self._get_impl_or_raise().set_position(*position)
 
     @property
     @on_main_thread
     def line_width(self) -> float:
-        return self._impl.pen().width()
+        return self._get_impl_or_raise().pen().width()
 
     @line_width.setter
     @on_main_thread
     def line_width(self, line_width: float):
-        pen = self._impl.pen()
+        impl = self._get_impl_or_raise()
+        pen = impl.pen()
         pen.setWidthF(line_width)
-        self._impl.set_pen(pen)
+        impl.set_pen(pen)
 
     @property
     @on_main_thread
-    def line_color(self) -> int:
-        return self._impl.pen().color().rgba()
+    def line_color(self) -> QColor:
+        return self._get_impl_or_raise().pen().color()
 
     @line_color.setter
     @on_main_thread
-    def line_color(self, line_color: Union[int, str]):
-        pen = self._impl.pen()
+    def line_color(self, line_color: Union[int, str, QColor]):
+        impl = self._get_impl_or_raise()
+        pen = impl.pen()
         pen.setColor(QColor(line_color))
-        self._impl.set_pen(pen)
+        impl.set_pen(pen)
 
     @property
     @on_main_thread
-    def fill_color(self) -> int:
-        return self._impl.brush().color().rgba()
+    def fill_color(self) -> QColor:
+        return self._get_impl_or_raise().brush().color()
 
     @fill_color.setter
     @on_main_thread
-    def fill_color(self, fill_color: Union[int, str, None]):
-        brush: QBrush = self._impl.brush()
+    def fill_color(self, fill_color: Union[int, str, QColor, None]):
+        impl = self._get_impl_or_raise()
+        brush: QBrush = impl.brush()
         if fill_color is None:
             brush.setStyle(Qt.NoBrush)
         else:
             brush.setColor(QColor(fill_color))
             brush.setStyle(Qt.SolidPattern)
-        self._impl.set_brush(brush)
+        impl.set_brush(brush)
 
     @property
     @on_main_thread
     def line_style(self) -> Qt.PenStyle:
-        return self._impl.pen().style()
+        return self._get_impl_or_raise().pen().style()
 
     @line_style.setter
     @on_main_thread
     def line_style(self, style: Qt.PenStyle):
-        pen = self._impl.pen()
+        impl = self._get_impl_or_raise()
+        pen = impl.pen()
         pen.setStyle(style)
-        self._impl.set_pen(pen)
+        impl.set_pen(pen)
 
 
-class Text(Item):
+class Text(_PlotItem):
     """A text label on a plot.
 
     By default the text colour follows the plot's palette (``WindowText`` role)
@@ -255,75 +278,75 @@ class Text(Item):
         self._impl: _SciQLopTextItem = _SciQLopTextItem(
             impl, text, QPointF(x, y), False,
             _coordinate_system_to_sqp(coordinate_system))
-        self._impl.set_color(QColor(color) if color is not None else _default_foreground(impl))
+        self._get_impl_or_raise().set_color(QColor(color) if color is not None else _default_foreground(impl))
         if font_size is not None:
-            self._impl.set_font_size(font_size)
+            self._get_impl_or_raise().set_font_size(font_size)
         if font_family is not None:
-            self._impl.set_font_family(font_family)
+            self._get_impl_or_raise().set_font_family(font_family)
 
     @property
     @on_main_thread
     def position(self) -> Tuple[float, float]:
-        p = self._impl.position()
+        p = self._get_impl_or_raise().position()
         return p.x(), p.y()
 
     @position.setter
     @on_main_thread
     def position(self, position: Tuple[float, float]):
-        self._impl.set_position(QPointF(*position))
+        self._get_impl_or_raise().set_position(QPointF(*position))
 
     @property
     @on_main_thread
     def text(self) -> str:
-        return self._impl.text()
+        return self._get_impl_or_raise().text()
 
     @text.setter
     @on_main_thread
     def text(self, text: str):
-        self._impl.set_text(text)
+        self._get_impl_or_raise().set_text(text)
 
     @property
     @on_main_thread
     def color(self) -> QColor:
-        return self._impl.color()
+        return self._get_impl_or_raise().color()
 
     @color.setter
     @on_main_thread
     def color(self, c: Union[str, QColor]):
-        self._impl.set_color(QColor(c))
+        self._get_impl_or_raise().set_color(QColor(c))
 
     @property
     @on_main_thread
     def font(self) -> QFont:
-        return self._impl.font()
+        return self._get_impl_or_raise().font()
 
     @font.setter
     @on_main_thread
     def font(self, f: QFont):
-        self._impl.set_font(f)
+        self._get_impl_or_raise().set_font(f)
 
     @property
     @on_main_thread
     def font_size(self) -> float:
-        return self._impl.font_size()
+        return self._get_impl_or_raise().font_size()
 
     @font_size.setter
     @on_main_thread
     def font_size(self, size: float):
-        self._impl.set_font_size(size)
+        self._get_impl_or_raise().set_font_size(size)
 
     @property
     @on_main_thread
     def font_family(self) -> str:
-        return self._impl.font().family()
+        return self._get_impl_or_raise().font().family()
 
     @font_family.setter
     @on_main_thread
     def font_family(self, family: str):
-        self._impl.set_font_family(family)
+        self._get_impl_or_raise().set_font_family(family)
 
 
-class CurvedLine(Item):
+class CurvedLine(_PlotItem):
     """A curved line with optional terminators at each end (default: arrow at ``stop``).
 
     The default line colour follows the plot's palette so the line stays
@@ -380,8 +403,8 @@ class CurvedLine(Item):
         if stop_direction is None:
             stop_direction = (start[0] + 2.0 * (stop[0] - start[0]) / 3.0,
                               start[1] + 2.0 * (stop[1] - start[1]) / 3.0)
-        self._impl.set_start_dir_position(QPointF(*start_direction))
-        self._impl.set_stop_dir_position(QPointF(*stop_direction))
+        self._get_impl_or_raise().set_start_dir_position(QPointF(*start_direction))
+        self._get_impl_or_raise().set_stop_dir_position(QPointF(*stop_direction))
 
         self.color = color if color is not None else _default_foreground(impl)
         if line_width is not None:
@@ -392,96 +415,96 @@ class CurvedLine(Item):
     @property
     @on_main_thread
     def start(self) -> Tuple[float, float]:
-        p = self._impl.start_position()
+        p = self._get_impl_or_raise().start_position()
         return p.x(), p.y()
 
     @start.setter
     @on_main_thread
     def start(self, start: Tuple[float, float]):
-        self._impl.set_start_position(QPointF(*start))
+        self._get_impl_or_raise().set_start_position(QPointF(*start))
 
     @property
     @on_main_thread
     def stop(self) -> Tuple[float, float]:
-        p = self._impl.stop_position()
+        p = self._get_impl_or_raise().stop_position()
         return p.x(), p.y()
 
     @stop.setter
     @on_main_thread
     def stop(self, stop: Tuple[float, float]):
-        self._impl.set_stop_position(QPointF(*stop))
+        self._get_impl_or_raise().set_stop_position(QPointF(*stop))
 
     @property
     @on_main_thread
     def start_direction(self) -> Tuple[float, float]:
-        p = self._impl.start_dir_position()
+        p = self._get_impl_or_raise().start_dir_position()
         return p.x(), p.y()
 
     @start_direction.setter
     @on_main_thread
     def start_direction(self, start_direction: Tuple[float, float]):
-        self._impl.set_start_dir_position(QPointF(*start_direction))
+        self._get_impl_or_raise().set_start_dir_position(QPointF(*start_direction))
 
     @property
     @on_main_thread
     def stop_direction(self) -> Tuple[float, float]:
-        p = self._impl.stop_dir_position()
+        p = self._get_impl_or_raise().stop_dir_position()
         return p.x(), p.y()
 
     @stop_direction.setter
     @on_main_thread
     def stop_direction(self, stop_direction: Tuple[float, float]):
-        self._impl.set_stop_dir_position(QPointF(*stop_direction))
+        self._get_impl_or_raise().set_stop_dir_position(QPointF(*stop_direction))
 
     @property
     @on_main_thread
     def color(self) -> QColor:
-        return self._impl.color()
+        return self._get_impl_or_raise().color()
 
     @color.setter
     @on_main_thread
     def color(self, c: Union[str, QColor]):
-        self._impl.set_color(QColor(c))
+        self._get_impl_or_raise().set_color(QColor(c))
 
     @property
     @on_main_thread
     def line_width(self) -> float:
-        return self._impl.line_width()
+        return self._get_impl_or_raise().line_width()
 
     @line_width.setter
     @on_main_thread
     def line_width(self, w: float):
-        self._impl.set_line_width(w)
+        self._get_impl_or_raise().set_line_width(w)
 
     @property
     @on_main_thread
     def line_style(self) -> Qt.PenStyle:
-        return self._impl.line_style()
+        return self._get_impl_or_raise().line_style()
 
     @line_style.setter
     @on_main_thread
     def line_style(self, style: Qt.PenStyle):
-        self._impl.set_line_style(style)
+        self._get_impl_or_raise().set_line_style(style)
 
     @property
     @on_main_thread
     def start_termination(self) -> LineTermination:
-        return self._impl.start_termination()
+        return self._get_impl_or_raise().start_termination()
 
     @start_termination.setter
     @on_main_thread
     def start_termination(self, termination: LineTermination):
-        self._impl.set_start_termination(termination)
+        self._get_impl_or_raise().set_start_termination(termination)
 
     @property
     @on_main_thread
     def stop_termination(self) -> LineTermination:
-        return self._impl.stop_termination()
+        return self._get_impl_or_raise().stop_termination()
 
     @stop_termination.setter
     @on_main_thread
     def stop_termination(self, termination: LineTermination):
-        self._impl.set_stop_termination(termination)
+        self._get_impl_or_raise().set_stop_termination(termination)
 
 
 class HorizontalLine:
@@ -510,35 +533,40 @@ class HorizontalLine:
         if color is not None:
             self._impl.set_color(QColor(color))
 
+    def _get_impl_or_raise(self):
+        if self._impl is None:
+            raise ValueError("The item does not exist anymore.")
+        return self._impl
+
     @property
     @on_main_thread
     def value(self) -> float:
-        return self._impl.position
+        return self._get_impl_or_raise().position
 
     @value.setter
     @on_main_thread
     def value(self, v: float):
-        self._impl.set_position(v)
+        self._get_impl_or_raise().set_position(v)
 
     @property
     @on_main_thread
     def color(self) -> QColor:
-        return self._impl.color()
+        return self._get_impl_or_raise().color()
 
     @color.setter
     @on_main_thread
     def color(self, c: Union[str, QColor]):
-        self._impl.set_color(QColor(c))
+        self._get_impl_or_raise().set_color(QColor(c))
 
     @property
     @on_main_thread
     def line_width(self) -> float:
-        return self._impl.line_width()
+        return self._get_impl_or_raise().line_width()
 
     @line_width.setter
     @on_main_thread
     def line_width(self, w: float):
-        self._impl.set_line_width(w)
+        self._get_impl_or_raise().set_line_width(w)
 
     @on_main_thread
     def remove(self) -> None:

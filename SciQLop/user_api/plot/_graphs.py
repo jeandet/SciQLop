@@ -45,10 +45,28 @@ def _len_safe(a):
 _VALID_Y_AXES = ("y", "y2")
 
 
+def _wire_destroyed(wrapper, impl):
+    """Clear the wrapper's impl when the C++ object dies, so stale handles
+    raise a friendly ValueError instead of a cryptic Shiboken RuntimeError."""
+    try:
+        impl.destroyed.connect(wrapper._on_destroyed)
+    except (AttributeError, RuntimeError):
+        pass
+
+
 class Graph(Plottable):
     def __init__(self, impl, plot=None):
         self._impl = impl
         self._plot = plot
+        _wire_destroyed(self, impl)
+
+    def _on_destroyed(self):
+        self._impl = None
+
+    def _get_impl_or_raise(self):
+        if self._impl is None:
+            raise ValueError("The graph does not exist anymore.")
+        return self._impl
 
     @property
     @on_main_thread
@@ -61,7 +79,7 @@ class Graph(Plottable):
         if self._plot is None:
             return None
         plot_impl = self._plot._get_impl_or_raise()
-        current = self._impl.y_axis()
+        current = self._get_impl_or_raise().y_axis()
         if current is plot_impl.y2_axis():
             return "y2"
         return "y"
@@ -77,7 +95,7 @@ class Graph(Plottable):
             raise RuntimeError(
                 "cannot retarget this graph: its parent plot reference is unset"
             )
-        self._impl.set_y_axis(self._plot._resolve_axis(name))
+        self._get_impl_or_raise().set_y_axis(self._plot._resolve_axis(name))
 
     @on_main_thread
     def set_data(self, x, y):
@@ -85,12 +103,12 @@ class Graph(Plottable):
             with _tracing.zone("ensure_arrays_of_double", cat="plot"):
                 arrays = ensure_arrays_of_double(x, y)
             with _tracing.zone("impl.set_data", cat="plot"):
-                self._impl.set_data(*arrays)
+                self._get_impl_or_raise().set_data(*arrays)
 
     @property
     @on_main_thread
     def data(self):
-        return self._impl.data()
+        return self._get_impl_or_raise().data()
 
     @data.setter
     @on_main_thread
@@ -100,12 +118,12 @@ class Graph(Plottable):
     @property
     @on_main_thread
     def visible(self) -> bool:
-        return self._impl.visible()
+        return self._get_impl_or_raise().visible()
 
     @visible.setter
     @on_main_thread
     def visible(self, visible):
-        self._impl.set_visible(visible)
+        self._get_impl_or_raise().set_visible(visible)
 
     def _repr_pretty_(self, p, cycle):
         if cycle:
@@ -117,10 +135,14 @@ class Graph(Plottable):
 class ColorMap(Plottable):
     def __init__(self, impl):
         self._impl = impl
+        _wire_destroyed(self, impl)
+
+    def _on_destroyed(self):
+        self._impl = None
 
     def _get_impl_or_raise(self):
         if self._impl is None:
-            raise ValueError("The plot does not exist anymore.")
+            raise ValueError("The colormap does not exist anymore.")
         return self._impl
 
     @on_main_thread
@@ -130,12 +152,12 @@ class ColorMap(Plottable):
             with _tracing.zone("ensure_arrays_of_double", cat="plot"):
                 arrays = ensure_arrays_of_double(x, y, z)
             with _tracing.zone("impl.set_data", cat="plot"):
-                self._impl.set_data(*arrays)
+                self._get_impl_or_raise().set_data(*arrays)
 
     @property
     @on_main_thread
     def data(self):
-        return self._impl.data()
+        return self._get_impl_or_raise().data()
 
     @data.setter
     @on_main_thread
@@ -145,12 +167,12 @@ class ColorMap(Plottable):
     @property
     @on_main_thread
     def visible(self) -> bool:
-        return self._impl.visible()
+        return self._get_impl_or_raise().visible()
 
     @visible.setter
     @on_main_thread
     def visible(self, visible):
-        self._impl.set_visible(visible)
+        self._get_impl_or_raise().set_visible(visible)
 
     def _repr_pretty_(self, p, cycle):
         if cycle:
@@ -164,6 +186,10 @@ class Histogram2D(Plottable):
 
     def __init__(self, impl):
         self._impl: _SciQLopHistogram2D = impl
+        _wire_destroyed(self, impl)
+
+    def _on_destroyed(self):
+        self._impl = None
 
     def _get_impl_or_raise(self):
         if self._impl is None:
@@ -176,12 +202,12 @@ class Histogram2D(Plottable):
             with _tracing.zone("ensure_arrays_of_double", cat="plot"):
                 arrays = ensure_arrays_of_double(x, y)
             with _tracing.zone("impl.set_data", cat="plot"):
-                self._impl.set_data(*arrays)
+                self._get_impl_or_raise().set_data(*arrays)
 
     @property
     @on_main_thread
     def data(self):
-        return self._impl.data()
+        return self._get_impl_or_raise().data()
 
     @data.setter
     @on_main_thread
@@ -191,32 +217,32 @@ class Histogram2D(Plottable):
     @property
     @on_main_thread
     def visible(self) -> bool:
-        return self._impl.visible()
+        return self._get_impl_or_raise().visible()
 
     @visible.setter
     @on_main_thread
     def visible(self, visible: bool):
-        self._impl.set_visible(visible)
+        self._get_impl_or_raise().set_visible(visible)
 
     @property
     @on_main_thread
     def z_log_scale(self) -> bool:
-        return self._impl.z_log_scale()
+        return self._get_impl_or_raise().z_log_scale()
 
     @z_log_scale.setter
     @on_main_thread
     def z_log_scale(self, v: bool):
-        self._impl.set_z_log_scale(v)
+        self._get_impl_or_raise().set_z_log_scale(v)
 
     @property
     @on_main_thread
     def gradient(self):
-        return self._impl.gradient()
+        return self._get_impl_or_raise().gradient()
 
     @gradient.setter
     @on_main_thread
     def gradient(self, g):
-        self._impl.set_gradient(g)
+        self._get_impl_or_raise().set_gradient(g)
 
     def _repr_pretty_(self, p, cycle):
         if cycle:
