@@ -338,8 +338,12 @@ def test_inspector_tree_tooltip_renders_on_graph_row(qtbot):
 
     panel = TimeSyncPanel('tree_tt', show_search_overlay=False)
     qtbot.addWidget(panel); panel.show()
-    plot_static_data(panel, np.array([0.0, 1.0, 2.0]),
-                     np.array([0.0, 1.0, 2.0]))
+    _, graph = plot_static_data(panel, np.array([0.0, 1.0, 2.0]),
+                                np.array([0.0, 1.0, 2.0]))
+    # Display names are unique-suffixed process-wide ("Line", "Line2", …):
+    # under full-suite ordering this graph is NOT named 'Line'. Match the
+    # actual name instead of hardcoding the first-in-process one.
+    graph_name = graph.name
     prop = PropertiesPanel(); qtbot.addWidget(prop); prop.show()
     install_inspector_tree_tooltips(prop)
     tree = prop.findChild(PlotsTreeView)
@@ -350,22 +354,36 @@ def test_inspector_tree_tooltip_renders_on_graph_row(qtbot):
 
     def fire(name) -> bool:
         m = tree.model()
-        def find(parent=QModelIndex()):
+        def find(target, parent=QModelIndex()):
             for r in range(m.rowCount(parent)):
                 idx = m.index(r, 0, parent)
-                if idx.data() == name:
+                if idx.data() == target:
                     return idx
-                sub = find(idx)
+                sub = find(target, idx)
                 if sub.isValid():
                     return sub
             return QModelIndex()
-        idx = find()
+        # The PlotsModel is a process-wide singleton: under full-suite
+        # ordering it still holds rows from earlier tests' panels (often
+        # also named 'Line'). Search only under THIS test's panel row.
+        # Row insertion is signal-driven; give the event loop time to
+        # deliver it when the model is busy after preceding tests.
+        panel_idx = find('tree_tt')
+        assert panel_idx.isValid(), "tree_tt panel row not found in PlotsModel"
+        idx = find(name, panel_idx)
+        for _ in range(50):
+            if idx.isValid():
+                break
+            qtbot.wait(20)
+            panel_idx = find('tree_tt')
+            idx = find(name, panel_idx)
+        assert idx.isValid(), f"{name!r} row not found under tree_tt"
         center = tree.visualRect(idx).center()
         ev = QHelpEvent(QEvent.Type.ToolTip, center,
                         tree.viewport().mapToGlobal(center))
         return flt.eventFilter(tree.viewport(), ev)
 
-    assert fire('Line') is True, "graph row consumed by filter"
+    assert fire(graph_name) is True, "graph row consumed by filter"
     assert fire('X Axis') is False, "axis row passes through"
 
 

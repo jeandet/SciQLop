@@ -195,6 +195,7 @@ def test_easy_provider_extended_metadata_with_model(qtbot):
     p._callback = _tested_module_level_vp_callback
     p._knobs_model = Knobs
     p._knob_specs = []
+    p._dependency_specs = []
 
     ctx = GraphContext(kind="vp", graph_id="g", panel_name="P",
                        plot_index=0, graph_type="Line",
@@ -213,6 +214,7 @@ def test_easy_provider_extended_metadata_without_model(qtbot):
     p._callback = _tested_module_level_vp_callback
     p._knobs_model = None
     p._knob_specs = []
+    p._dependency_specs = []
 
     ctx = GraphContext(kind="vp", graph_id="g", panel_name="P",
                        plot_index=0, graph_type="Line",
