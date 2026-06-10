@@ -1,5 +1,6 @@
 from __future__ import annotations
 import bisect
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -132,6 +133,7 @@ class CatalogProvider(QObject):
         self._dirty_catalogs: set[str] = set()
         self._provider_dirty: bool = False
         self._needs_sort: set[str] = set()
+        self._suppress_events_changed: set[str] = set()
         self._range_connections: dict[str, list[tuple]] = {}
         self._attribute_specs: dict[str, dict[str, "KnobSpec"]] = {}  # catalog_uuid → {key: spec}
         from .registry import CatalogRegistry
@@ -294,6 +296,22 @@ class CatalogProvider(QObject):
         """Return a custom icon for a node type, or None for default."""
         return None
 
+    @contextmanager
+    def batch_events_update(self, catalog: Catalog):
+        """Coalesce ``events_changed`` emissions for *catalog* into a single
+        one fired on exit. Use around bulk add/remove loops so per-event UI
+        refreshes (overlays, tables) don't turn a save into O(N²) work."""
+        self._suppress_events_changed.add(catalog.uuid)
+        try:
+            yield
+        finally:
+            self._suppress_events_changed.discard(catalog.uuid)
+            self.events_changed.emit(catalog)
+
+    def _emit_events_changed(self, catalog: Catalog) -> None:
+        if catalog.uuid not in self._suppress_events_changed:
+            self.events_changed.emit(catalog)
+
     def _disconnect_range_connections(self, catalog_uuid: str) -> None:
         for event, slot in self._range_connections.get(catalog_uuid, []):
             try:
@@ -322,7 +340,7 @@ class CatalogProvider(QObject):
         if catalog.uuid not in self._range_connections:
             self._range_connections[catalog.uuid] = []
         self._range_connections[catalog.uuid].append((event, slot))
-        self.events_changed.emit(catalog)
+        self._emit_events_changed(catalog)
 
     def _remove_event(self, catalog: Catalog, event: CatalogEvent) -> None:
         event_list = self._events.get(catalog.uuid, [])
@@ -339,7 +357,7 @@ class CatalogProvider(QObject):
                     pass
                 conns.pop(i)
                 break
-        self.events_changed.emit(catalog)
+        self._emit_events_changed(catalog)
 
     def add_event(self, catalog: Catalog, event: CatalogEvent) -> None:
         """Public API: add an event to a catalog. Override for backend persistence."""
