@@ -421,6 +421,220 @@ def test_remove_events_with_cache_invalidation(cache_invalidating_service):
     assert len(cat) == 1
 
 
+class _TrackingEvent(CatalogEvent):
+    """Event whose range setters persist to a backend dict, like TscatEvent
+    persists via SetAttributeAction."""
+
+    @CatalogEvent.start.setter
+    def start(self, value):
+        CatalogEvent.start.fset(self, value)
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            backend[self.uuid]["start"] = self._start
+
+    @CatalogEvent.stop.setter
+    def stop(self, value):
+        CatalogEvent.stop.fset(self, value)
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            backend[self.uuid]["stop"] = self._stop
+
+
+class _PersistenceTrackingProvider(CatalogProvider):
+    """Mirrors tscat's persistence model: event meta persists through
+    set_event_meta/remove_event_meta (uuid-keyed), event ranges persist only
+    through the cached event object's setters."""
+
+    def __init__(self, parent=None):
+        super().__init__(name="PersistTrack", parent=parent)
+        self._catalogs: list = []
+        self._backend: dict[str, dict] = {}
+
+    def catalogs(self):
+        return list(self._catalogs)
+
+    def capabilities(self, catalog=None):
+        from SciQLop.components.catalogs.backend.provider import Capability
+        return {
+            Capability.EDIT_EVENTS, Capability.CREATE_EVENTS,
+            Capability.DELETE_EVENTS, Capability.CREATE_CATALOGS,
+            Capability.DELETE_CATALOGS, Capability.SAVE,
+        }
+
+    def create_catalog(self, name, path=None):
+        cat = Catalog(uuid=f"ptp-{len(self._catalogs)}", name=name, provider=self, path=path or [])
+        self._catalogs.append(cat)
+        self._set_events(cat, [])
+        return cat
+
+    def add_event(self, catalog, event):
+        self._backend[event.uuid] = {
+            "start": event.start, "stop": event.stop, "meta": dict(event.meta),
+        }
+        tracked = _TrackingEvent(uuid=event.uuid, start=event.start,
+                                 stop=event.stop, meta=event.meta)
+        tracked._backend = self._backend
+        self._add_event(catalog, tracked)
+        self.mark_dirty(catalog)
+
+    def remove_event(self, catalog, event):
+        self._backend.pop(event.uuid, None)
+        super().remove_event(catalog, event)
+
+    def set_event_meta(self, catalog, event, key, value):
+        if event.meta.get(key) == value:
+            return
+        self._backend[event.uuid]["meta"][key] = value
+        event.set_meta(key, value)
+        self.event_meta_changed.emit(catalog, event, key)
+        self.mark_dirty(catalog)
+
+    def remove_event_meta(self, catalog, event, key):
+        if key not in event.meta:
+            return
+        self._backend[event.uuid]["meta"].pop(key, None)
+        event.remove_meta(key)
+        self.event_meta_changed.emit(catalog, event, key)
+        self.mark_dirty(catalog)
+
+
+@pytest.fixture
+def tracking_provider(qtbot, qapp):
+    from SciQLop.components.catalogs.backend.registry import CatalogRegistry
+    provider = _PersistenceTrackingProvider()
+    yield provider
+    CatalogRegistry.instance().unregister(provider)
+
+
+@pytest.fixture
+def tracking_service(tracking_provider):
+    from SciQLop.user_api.catalogs._service import CatalogService
+    return CatalogService()
+
+
+def _utc(*args):
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def test_save_persists_modified_event_times(tracking_service, tracking_provider):
+    """Round-trip get() -> edit times -> save() must reach the backend.
+
+    Reproducer for the 2026-06-09 review finding: _persist diffs by uuid only,
+    so an event present in both old and new (same uuid, changed times) was
+    neither updated through the provider nor through the cached event object.
+    """
+    from speasy.products.catalog import Catalog as SpeasyCatalog, Event as SpeasyEvent
+    svc = tracking_service
+    svc.create("PersistTrack//cat", [("2020-01-01", "2020-01-02", {"tag": "a"})])
+    cat = svc.get("PersistTrack//cat")
+    uuid = cat[0].meta["__sciqlop_uuid__"]
+
+    edited = SpeasyCatalog(name="cat", events=[
+        SpeasyEvent(_utc(2021, 5, 5), _utc(2021, 5, 6), meta=dict(cat[0].meta)),
+    ])
+    svc.save("PersistTrack//cat", edited)
+
+    assert tracking_provider._backend[uuid]["start"] == _utc(2021, 5, 5)
+    assert tracking_provider._backend[uuid]["stop"] == _utc(2021, 5, 6)
+
+
+def test_save_persists_modified_event_meta(tracking_service, tracking_provider):
+    """Modified/removed meta keys on a surviving uuid must go through
+    set_event_meta/remove_event_meta so backends persist them."""
+    from speasy.products.catalog import Catalog as SpeasyCatalog, Event as SpeasyEvent
+    svc = tracking_service
+    svc.create("PersistTrack//cat", [
+        ("2020-01-01", "2020-01-02", {"tag": "a", "doomed": 1}),
+    ])
+    cat = svc.get("PersistTrack//cat")
+    uuid = cat[0].meta["__sciqlop_uuid__"]
+
+    new_meta = {"tag": "b", "fresh": True, "__sciqlop_uuid__": uuid}
+    edited = SpeasyCatalog(name="cat", events=[
+        SpeasyEvent(cat[0].start_time, cat[0].stop_time, meta=new_meta),
+    ])
+    svc.save("PersistTrack//cat", edited)
+
+    backend_meta = tracking_provider._backend[uuid]["meta"]
+    assert backend_meta["tag"] == "b"
+    assert backend_meta["fresh"] is True
+    assert "doomed" not in backend_meta
+
+
+def test_save_preserves_cached_event_identity(tracking_service, tracking_provider):
+    """Surviving events must keep their cached object identity so
+    persistence-wired wrappers (TscatEvent-style) stay in the cache."""
+    from speasy.products.catalog import Catalog as SpeasyCatalog, Event as SpeasyEvent
+    svc = tracking_service
+    svc.create("PersistTrack//cat", [("2020-01-01", "2020-01-02", {"tag": "a"})])
+    cat_obj = tracking_provider.catalogs()[0]
+    before = tracking_provider.events(cat_obj)[0]
+
+    cat = svc.get("PersistTrack//cat")
+    edited = SpeasyCatalog(name="cat", events=[
+        SpeasyEvent(_utc(2022, 1, 1), _utc(2022, 1, 2), meta=dict(cat[0].meta)),
+    ])
+    svc.save("PersistTrack//cat", edited)
+
+    after = tracking_provider.events(cat_obj)[0]
+    assert after is before
+    assert isinstance(after, _TrackingEvent)
+    assert after.start == _utc(2022, 1, 1)
+
+
+def test_save_emits_events_changed_once(tracking_service, tracking_provider, qapp):
+    """Bulk saves must coalesce events_changed into one emission — per-event
+    emissions made overlay/table refreshes O(N²) (2026-06-09 review, P1)."""
+    svc = tracking_service
+    svc.create("PersistTrack//bulk", [("2020-01-01", "2020-01-02")])
+
+    counts = []
+    tracking_provider.events_changed.connect(lambda c: counts.append(c))
+    svc.save("PersistTrack//bulk", [
+        ("2021-01-01", "2021-01-02"),
+        ("2021-02-01", "2021-02-02"),
+        ("2021-03-01", "2021-03-02"),
+    ])
+    assert len(counts) == 1
+
+
+def test_service_methods_marshal_to_main_thread(tracking_service, tracking_provider, qapp):
+    """Reproducer (2026-06-09 review): CatalogService methods emit provider
+    signals and mutate provider dicts, but carried no @on_main_thread — calls
+    from the Jupyter kernel thread ran Qt code off the main thread."""
+    import threading as _threading
+    from SciQLop.user_api import threading as sqp_threading
+
+    routed = []
+
+    def recording_invoker(func, *args, **kwargs):
+        routed.append(getattr(func, "__name__", str(func)))
+        return func(*args, **kwargs)
+
+    old_invoker = sqp_threading._invoker
+    sqp_threading.init_invoker(recording_invoker)
+    try:
+        errors = []
+
+        def worker():
+            try:
+                tracking_service.create("PersistTrack//threaded", [("2020-01-01", "2020-01-02")])
+                tracking_service.list("PersistTrack")
+                tracking_service.get("PersistTrack//threaded")
+                tracking_service.remove("PersistTrack//threaded")
+            except Exception as e:  # surfaced below; thread must not swallow
+                errors.append(e)
+
+        t = _threading.Thread(target=worker)
+        t.start()
+        t.join(timeout=10)
+        assert not errors, errors
+        assert len(routed) >= 4, \
+            f"service calls from a worker thread must marshal through the invoker, got {routed}"
+    finally:
+        sqp_threading.init_invoker(old_invoker)
+
+
 def test_import_catalogs_singleton():
     from SciQLop.user_api.catalogs import catalogs
     assert hasattr(catalogs, 'list')

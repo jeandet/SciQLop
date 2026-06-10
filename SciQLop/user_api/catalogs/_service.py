@@ -12,6 +12,7 @@ from SciQLop.components.catalogs.backend.provider import (
     Capability,
 )
 from SciQLop.components.catalogs.backend.registry import CatalogRegistry
+from SciQLop.user_api.threading import on_main_thread
 
 _UUID_KEY = "__sciqlop_uuid__"
 
@@ -102,25 +103,51 @@ class CatalogService:
             raise KeyError(f"Catalog not found: {path!r}")
         return provider, catalog
 
+    @staticmethod
+    def _update_event(provider: CatalogProvider, catalog: Catalog,
+                      old: CatalogEvent, new: CatalogEvent) -> None:
+        """Apply *new*'s times and meta onto the cached *old* event.
+
+        Range changes go through the cached object's setters (providers like
+        tscat persist ranges only there); meta changes go through the
+        provider's set/remove_event_meta hooks (uuid-keyed persistence)."""
+        if new.start != old.start:
+            old.start = new.start
+        if new.stop != old.stop:
+            old.stop = new.stop
+        for key, value in new.meta.items():
+            provider.set_event_meta(catalog, old, key, value)
+        for key in set(old.meta) - set(new.meta):
+            provider.remove_event_meta(catalog, old, key)
+
     def _persist(self, provider: CatalogProvider, catalog: Catalog, events: list[CatalogEvent]) -> None:
-        old_by_uuid = {e.uuid: e for e in provider.events(catalog)}
-        new_uuids = {e.uuid for e in events}
+        with provider.batch_events_update(catalog):
+            old_by_uuid = {e.uuid: e for e in provider.events(catalog)}
+            new_uuids = {e.uuid for e in events}
 
-        for uuid, old in old_by_uuid.items():
-            if uuid not in new_uuids:
-                provider.remove_event(catalog, old)
-        for event in events:
-            if event.uuid not in old_by_uuid:
-                provider.add_event(catalog, event)
+            for uuid, old in old_by_uuid.items():
+                if uuid not in new_uuids:
+                    provider.remove_event(catalog, old)
+            for event in events:
+                old = old_by_uuid.get(event.uuid)
+                if old is None:
+                    provider.add_event(catalog, event)
+                else:
+                    self._update_event(provider, catalog, old, event)
 
-        # Don't call save() here — providers like tscat queue mutations
-        # asynchronously (QThread worker), so saving immediately would
-        # race with pending ORM actions. The cache below is authoritative;
-        # disk persistence happens via provider.save() called explicitly
-        # or on shutdown.
-        provider._set_events(catalog, events)
-        provider.events_changed.emit(catalog)
+            # Don't call save() here — providers like tscat queue mutations
+            # asynchronously (QThread worker), so saving immediately would
+            # race with pending ORM actions. The cache below is authoritative;
+            # disk persistence happens via provider.save() called explicitly
+            # or on shutdown. Prefer the provider's own cached objects (then
+            # the pre-save ones) over our plain copies, so persistence-wired
+            # wrappers (e.g. TscatEvent) stay in the cache.
+            current_by_uuid = {e.uuid: e for e in provider.events(catalog)}
+            final = [current_by_uuid.get(e.uuid) or old_by_uuid.get(e.uuid, e)
+                     for e in events]
+            provider._set_events(catalog, final)
 
+    @on_main_thread
     def list(self, prefix: str | None = None) -> list[str]:
         """Return full paths of all catalogs, optionally filtered by *prefix*.
 
@@ -150,6 +177,7 @@ class CatalogService:
             if cat.path[:len(path_prefix)] == path_prefix
         ]
 
+    @on_main_thread
     def get(self, path: str) -> SpeasyCatalog:
         """Retrieve a catalog as a ``speasy.Catalog``.
 
@@ -174,6 +202,7 @@ class CatalogService:
         speasy_events = [_event_to_speasy(e) for e in events]
         return SpeasyCatalog(name=catalog.name, events=speasy_events)
 
+    @on_main_thread
     def save(self, path: str, data) -> None:
         """Save events to a catalog, creating it if it doesn't exist (upsert).
 
@@ -207,6 +236,7 @@ class CatalogService:
 
         self._persist(provider, existing, new_events)
 
+    @on_main_thread
     def remove(self, path: str) -> None:
         """Delete a catalog.
 
@@ -227,6 +257,7 @@ class CatalogService:
             raise PermissionError(f"Provider {provider.name!r} cannot delete catalogs")
         provider.remove_catalog(catalog)
 
+    @on_main_thread
     def create(self, path: str, data) -> None:
         """Create a new catalog with the given events (strict — fails if exists).
 
@@ -259,6 +290,7 @@ class CatalogService:
         if new_events:
             self._persist(provider, catalog, new_events)
 
+    @on_main_thread
     def add_events(self, path: str, data) -> None:
         """Append events to an existing catalog.
 
@@ -281,6 +313,7 @@ class CatalogService:
         new_events = [_event_to_internal(e) for e in speasy_cat]
         self._persist(provider, catalog, existing + new_events)
 
+    @on_main_thread
     def remove_events(self, path: str, events) -> None:
         """Remove specific events from a catalog.
 
