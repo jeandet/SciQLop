@@ -92,21 +92,23 @@ class PanelCatalogManager(QObject):
     def overlay(self, catalog_uuid: str) -> CatalogOverlay | None:
         return self._overlays.get(catalog_uuid)
 
+    def _jump_to_event(self, event: CatalogEvent, margin_factor: float) -> None:
+        from SciQLop.core import TimeRange
+        duration = event.stop.timestamp() - event.start.timestamp()
+        if duration <= 0:
+            margin = 3600.0  # 1 hour fallback for zero-duration events
+        else:
+            margin = duration * margin_factor
+        self._panel.time_range = TimeRange(
+            event.start.timestamp() - margin,
+            event.stop.timestamp() + margin,
+        )
+
     def select_event(self, event: CatalogEvent) -> None:
         for overlay in self._overlays.values():
             overlay.select_event(event)
         if self._mode == InteractionMode.JUMP:
-            from SciQLop.core import TimeRange
-            duration = event.stop.timestamp() - event.start.timestamp()
-            if duration <= 0:
-                margin = 3600.0  # 1 hour fallback for zero-duration events
-            else:
-                margin = duration * 4.5
-            tr = TimeRange(
-                event.start.timestamp() - margin,
-                event.stop.timestamp() + margin,
-            )
-            self._panel.time_range = tr
+            self._jump_to_event(event, margin_factor=4.5)
 
     def build_catalogs_menu(self, parent_menu: QMenu) -> QMenu:
         menu = parent_menu.addMenu("Catalogs")
@@ -218,11 +220,5 @@ class PanelCatalogManager(QObject):
 
     def _on_event_clicked(self, event: CatalogEvent) -> None:
         if self._mode == InteractionMode.JUMP:
-            from SciQLop.core import TimeRange
-            margin = (event.stop.timestamp() - event.start.timestamp()) * 0.5
-            tr = TimeRange(
-                event.start.timestamp() - margin,
-                event.stop.timestamp() + margin,
-            )
-            self._panel.time_range = tr
+            self._jump_to_event(event, margin_factor=0.5)
         self.event_clicked.emit(event)

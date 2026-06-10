@@ -230,6 +230,41 @@ def test_manager_jump_mode_zero_duration_event(qtbot, qapp):
     assert abs(tr.stop() - (t.timestamp() + 3600)) < 1.0
 
 
+def test_manager_jump_mode_zero_duration_event_click(qtbot, qapp):
+    """Reproducer (2026-06-09 review): clicking a zero-duration event's span in
+    JUMP mode computed a zero-width time range, which SciQLopPlots silently
+    ignores — the jump did nothing. Must fall back to a 1h margin like
+    select_event does."""
+    from SciQLop.components.catalogs.backend.panel_manager import (
+        PanelCatalogManager, InteractionMode,
+    )
+    from SciQLop.components.catalogs.backend.provider import CatalogEvent
+    from SciQLop.components.catalogs.backend.dummy_provider import DummyProvider
+    from SciQLop.components.plotting.ui.time_sync_panel import TimeSyncPanel
+    from SciQLop.core import TimeRange
+
+    panel = TimeSyncPanel("test-panel")
+    base = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    panel.time_range = TimeRange(base.timestamp(), (base + timedelta(days=200)).timestamp())
+
+    provider = DummyProvider(num_catalogs=1, events_per_catalog=1)
+    cat = provider.catalogs()[0]
+
+    manager = PanelCatalogManager(panel)
+    manager.add_catalog(cat)
+    manager.mode = InteractionMode.JUMP
+
+    t = datetime(2020, 6, 15, 12, 0, tzinfo=timezone.utc)
+    zero_event = CatalogEvent(uuid="zero-dur-click", start=t, stop=t)
+
+    manager._on_event_clicked(zero_event)
+
+    tr = panel.time_range
+    assert tr.stop() - tr.start() > 0
+    assert abs(tr.start() - (t.timestamp() - 3600)) < 1.0
+    assert abs(tr.stop() - (t.timestamp() + 3600)) < 1.0
+
+
 def test_manager_view_mode_does_not_jump(qtbot, qapp):
     from SciQLop.components.catalogs.backend.panel_manager import (
         PanelCatalogManager, InteractionMode,
