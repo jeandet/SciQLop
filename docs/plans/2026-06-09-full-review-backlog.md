@@ -80,5 +80,11 @@ Fixed (all verified by re-running the polluting combinations):
 
 ## Left open (needs decisions / upstream)
 
-- **SciQLopPlots: implement `SciQLopItemInterface::visible()/set_visible()`** for Pixmap/Ellipse/Text/CurvedLine items (currently abstract stubs) — logged as **M9** in `SciQLopPlots/docs/backlog-2026-06-10.md`. Once done, revert `_PlotItem.visible` to delegate.
+- **SciQLopPlots: implement `SciQLopItemInterface::visible()/set_visible()`** for Pixmap/Ellipse/Text/CurvedLine items (currently abstract stubs) — logged as **M9** in `SciQLopPlots/docs/backlog-2026-06-10.md`. Once done, revert `_PlotItem.visible` in `user_api/plot/_graphic_primitives.py` to delegate (and drop its `NotImplementedError` test in `tests/test_api_consistency.py`).
 - `XYPlot.plot` could *gain* product-path support for parity with `TimeSeriesPlot.plot` (feature, not fixed here).
+
+## SciQLopPlots 0.27.x follow-ups (from the 2026-06-10 version audit)
+
+- **Bump the pin `SciQLopPlots==0.27.0` → `==0.27.1`** once the local venv runs 0.27.1 (repo + PyPI already have it; 0.27.0→0.27.1 has no breaking changes — legend double-click moved into component/colormap classes, inspector Visible checkboxes, crosshair overlay mouse-transparency, search-bar-help tooltip).
+- **Expose log binning on user_api `histogram2d`**: 0.27 added `x_bins_log`/`y_bins_log` creation kwargs on the C++ side; plumb them through `_create_histogram2d`, `PlotPanel.histogram2d` and `XYPlot/TimeSeriesPlot.histogram2d` (keyword-only, default False).
+- **Re-test pixel-coordinate items**: 0.27's `fix(items): set position type before coords so Pixels-mode items aren't reinterpreted` may soften the `pixel-coord-items-clipped-to-axis-rect` pitfall — verify whether Pixel-mode primitives placed in plot margins now render, and update the pitfall memory accordingly.
