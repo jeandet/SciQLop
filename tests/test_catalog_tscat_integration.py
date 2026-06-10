@@ -35,11 +35,20 @@ def tscat_provider(qapp):
     from tscat_gui.tscat_driver.model import tscat_model
     tscat_model.tscat_root()
     _process_events(qapp)
-    from SciQLop.plugins.tscat_catalogs.tscat_provider import TscatCatalogProvider
     from SciQLop.components.catalogs.backend.registry import CatalogRegistry
+    registry = CatalogRegistry.instance()
+    # When the main_window fixture already loaded the tscat plugin (e.g. the
+    # fuzzing tests ran first), a "My Catalogs" provider is registered and
+    # CatalogService resolves THAT one — reuse it instead of creating a
+    # duplicate that races it on the shared tscat driver.
+    existing = next((p for p in registry.providers() if p.name == PROVIDER), None)
+    if existing is not None:
+        yield existing
+        return
+    from SciQLop.plugins.tscat_catalogs.tscat_provider import TscatCatalogProvider
     provider = TscatCatalogProvider()
     yield provider
-    CatalogRegistry.instance().unregister(provider)
+    registry.unregister(provider)
 
 
 @pytest.fixture

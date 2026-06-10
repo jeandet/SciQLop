@@ -563,11 +563,13 @@ class TscatCatalogProvider(CatalogProvider):
 
     @staticmethod
     def _is_orphan_refresh_trigger(action) -> bool:
-        from .orphans import BulkDeleteOrphanEventsAction
-        return isinstance(action, (
+        # Tag check, not isinstance: plugin-local action classes exist twice
+        # when the module is imported both as `tscat_catalogs` (plugin
+        # loader) and `SciQLop.plugins.tscat_catalogs` (package import) —
+        # see the tag comments in orphans.py.
+        return getattr(action, "is_orphan_delete", False) or isinstance(action, (
             CreateEntityAction, RemoveEntitiesAction,
             AddEventsToCatalogueAction, RemoveEventsFromCatalogueAction,
-            BulkDeleteOrphanEventsAction,
         ))
 
     def _dispatch_orphan_refresh(self) -> None:
@@ -588,8 +590,7 @@ class TscatCatalogProvider(CatalogProvider):
 
     @Slot(object)
     def _on_orphan_query_done(self, action) -> None:
-        from .orphans import GetOrphanEventsAction
-        if not isinstance(action, GetOrphanEventsAction):
+        if not getattr(action, "is_orphan_query", False):
             return
         wrapped = [TscatEvent(ev, parent=self) for ev in action.events]
         self._orphan_events = wrapped
@@ -608,8 +609,10 @@ class TscatCatalogProvider(CatalogProvider):
 
     @Slot()
     def _on_action_done(self, action) -> None:
-        from .orphans import GetOrphanEventsAction
-        if isinstance(action, (SetAttributeAction, GetOrphanEventsAction)):
+        # Tag check for the orphan query: another provider instance (imported
+        # under the other module identity) issuing its query must not be
+        # mistaken for an external DB change — that wiped our event cache.
+        if isinstance(action, SetAttributeAction) or getattr(action, "is_orphan_query", False):
             return
         is_ours = isinstance(action, self._TRACKED_ACTIONS) and self._pending_actions > 0
         if is_ours:

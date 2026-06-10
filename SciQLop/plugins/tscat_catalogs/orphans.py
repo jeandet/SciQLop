@@ -32,6 +32,14 @@ class GetOrphanEventsAction(Action):
     state (see `pitfall-catalogs-hot-path-tscat-query.md`).
     """
 
+    # Identity tag checked instead of isinstance: the plugin loader imports
+    # this module as `tscat_catalogs.orphans` while package imports use
+    # `SciQLop.plugins.tscat_catalogs.orphans` — two class objects for the
+    # same source, so isinstance across that boundary silently fails and a
+    # provider mistakes another provider's orphan query for an external DB
+    # change (wiping its event cache).
+    is_orphan_query = True
+
     events: List = field(default_factory=list)
 
     def action(self) -> None:
@@ -65,6 +73,9 @@ class BulkDeleteOrphanEventsAction(Action):
     round-trip per orphan; on a database with 50k+ orphans that took
     minutes. The bulk path runs in seconds.
     """
+
+    # Same dual-import-safe identity tag as GetOrphanEventsAction.
+    is_orphan_delete = True
 
     uuids: Optional[List[str]] = None
     deleted_count: int = 0
