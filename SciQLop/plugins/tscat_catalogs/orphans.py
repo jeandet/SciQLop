@@ -90,7 +90,7 @@ class BulkDeleteOrphanEventsAction(Action):
         from tscat.orm_sqlalchemy import orm as _orm
 
         session = _tscat_backend().session
-        # Mirror TscatCatalogProvider._ensure_clean_session: a previous
+        # Mirror _EnsureCleanSessionAction (tscat_provider.py): a previous
         # failed flush could have left the transaction in a bad state, and
         # our commit() below would otherwise persist whatever stale work
         # was staged before this action ran.

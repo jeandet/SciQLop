@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -15,15 +16,35 @@ from SciQLop.components.catalogs.backend.provider import _SENTINEL, ProviderActi
 
 from tscat_gui.tscat_driver.model import tscat_model
 from tscat_gui.tscat_driver.actions import (
-    SetAttributeAction, CreateEntityAction, RemoveEntitiesAction,
+    Action, SetAttributeAction, CreateEntityAction, RemoveEntitiesAction,
     AddEventsToCatalogueAction, RemoveEventsFromCatalogueAction,
-    DeleteAttributeAction,
+    DeleteAttributeAction, SaveAction,
 )
 import tscat
 from tscat_gui.model_base.constants import EntityRole
 
 
 SCHEMA_ATTR_PREFIX = "sciqlop_schema__"
+
+
+@dataclass
+class _EnsureCleanSessionAction(Action):
+    """Driver-thread rollback of a transaction left dead by a prior failed
+    flush. Must run on the tscat-gui driver QThread: touching the session
+    from the main thread races concurrently executing actions and can leave
+    a commit stuck in SQLAlchemy's 'prepared' state, after which every
+    driver action fails with InvalidRequestError.
+    """
+
+    # Identity tag checked instead of isinstance — same dual-import rationale
+    # as the tags in orphans.py.
+    is_session_cleanup = True
+
+    def action(self) -> None:
+        from tscat.base import backend as _tscat_backend
+        session = _tscat_backend().session
+        if not session.is_active:
+            session.rollback()
 
 
 class TscatEvent(CatalogEvent):
@@ -350,16 +371,19 @@ class TscatCatalogProvider(CatalogProvider):
 
     @staticmethod
     def _ensure_clean_session():
-        """Rollback any pending transaction left by a prior failed flush."""
-        from tscat.base import backend as _tscat_backend
-        session = _tscat_backend().session
-        if not session.is_active:
-            session.rollback()
+        """Queue a driver-thread rollback of any pending transaction left by
+        a prior failed flush. FIFO action dispatch keeps it ordered before
+        whatever action the caller queues next.
+        """
+        tscat_model.do(_EnsureCleanSessionAction(user_callback=None))
 
     def _do_save(self) -> None:
-        import tscat
+        # Commit on the driver thread, serialized with in-flight actions. A
+        # main-thread tscat.save() here used to race them and leave the
+        # session stuck in SQLAlchemy's 'prepared' state. Dirty flags are
+        # cleared optimistically by CatalogProvider.save().
         self._ensure_clean_session()
-        tscat.save()
+        tscat_model.do(SaveAction(user_callback=None))
 
     def add_event(self, catalog: Catalog, event: CatalogEvent) -> None:
         self._ensure_clean_session()
@@ -609,10 +633,13 @@ class TscatCatalogProvider(CatalogProvider):
 
     @Slot()
     def _on_action_done(self, action) -> None:
-        # Tag check for the orphan query: another provider instance (imported
-        # under the other module identity) issuing its query must not be
-        # mistaken for an external DB change — that wiped our event cache.
-        if isinstance(action, SetAttributeAction) or getattr(action, "is_orphan_query", False):
+        # Tag checks for plugin-local actions: another provider instance
+        # (imported under the other module identity) issuing its query must
+        # not be mistaken for an external DB change — that wiped our event
+        # cache. SaveAction and session cleanup never change data either.
+        if isinstance(action, (SetAttributeAction, SaveAction)) \
+                or getattr(action, "is_orphan_query", False) \
+                or getattr(action, "is_session_cleanup", False):
             return
         is_ours = isinstance(action, self._TRACKED_ACTIONS) and self._pending_actions > 0
         if is_ours:

@@ -1,0 +1,92 @@
+"""Reproducers for the tscat "session is in 'prepared' state" corruption.
+
+The tscat-gui driver serializes all DB work on its worker QThread, against
+tscat's single global SQLAlchemy session. TscatCatalogProvider used to
+commit (``tscat.save()``) and rollback (``_ensure_clean_session``) that
+session directly on the main thread; a main-thread commit racing driver
+actions leaves the session transaction stuck in SQLAlchemy's PREPARED
+state, after which every catalog action fails with InvalidRequestError.
+These tests pin every session touch to the driver thread.
+"""
+
+import threading
+import time
+
+import pytest
+
+
+PROVIDER = "My Catalogs"
+
+
+def _spin(qapp, predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
+def _session():
+    from tscat.base import backend
+    return backend().session
+
+
+@pytest.fixture(scope="module")
+def tscat_provider(qapp):
+    from tscat_gui.tscat_driver.model import tscat_model
+    tscat_model.tscat_root()
+    _spin(qapp, lambda: False, timeout=0.5)
+    from SciQLop.components.catalogs.backend.registry import CatalogRegistry
+    registry = CatalogRegistry.instance()
+    existing = next((p for p in registry.providers() if p.name == PROVIDER), None)
+    if existing is not None:
+        yield existing
+        return
+    from SciQLop.plugins.tscat_catalogs.tscat_provider import TscatCatalogProvider
+    provider = TscatCatalogProvider()
+    yield provider
+    registry.unregister(provider)
+
+
+def test_save_commits_on_driver_thread(tscat_provider, qapp, monkeypatch):
+    session = _session()
+    commit_threads: list[int] = []
+    real_commit = session.commit
+
+    def recording_commit():
+        commit_threads.append(threading.get_ident())
+        real_commit()
+
+    monkeypatch.setattr(session, "commit", recording_commit)
+    tscat_provider.save()
+    assert _spin(qapp, lambda: commit_threads), "save() never reached session.commit()"
+    assert threading.get_ident() not in commit_threads, (
+        "tscat session.commit() ran on the main thread; it must run on the "
+        "tscat-gui driver thread or it races in-flight driver actions and "
+        "leaves the session stuck in the 'prepared' state"
+    )
+
+
+def test_failed_flush_recovery_rolls_back_on_driver_thread(tscat_provider, qapp, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    session = _session()
+    rollback_threads: list[int] = []
+    real_rollback = session.rollback
+
+    def recording_rollback():
+        rollback_threads.append(threading.get_ident())
+        real_rollback()
+
+    monkeypatch.setattr(session, "rollback", recording_rollback)
+    # Simulate the dead transaction a failed flush leaves behind, so the
+    # provider's recovery path actually issues a rollback.
+    monkeypatch.setattr(Session, "is_active", False)
+    tscat_provider.save()
+    assert _spin(qapp, lambda: rollback_threads), "recovery rollback never ran"
+    assert threading.get_ident() not in rollback_threads, (
+        "tscat session.rollback() ran on the main thread; recovery must be "
+        "routed through the driver thread like every other session touch"
+    )
