@@ -154,10 +154,12 @@ class Client(QObject):
         return []
 
     async def join_room(self, room_id: Optional[str] = None) -> bool:
+        # _task may be alive while _connected is False (reconnect backoff);
+        # always stop the previous loop or two _run loops would race.
+        if self._task is not None:
+            await self.leave_room()
         if room_id:
             self._room_id = room_id
-        if self._connected:
-            await self.leave_room()
         self._connecting_event.clear()
         self._close_event.clear()
         self._ever_connected = False
@@ -186,7 +188,10 @@ class Client(QObject):
         backoff = _RECONNECT_INITIAL_BACKOFF
         try:
             while not self._close_event.is_set():
-                if _ensure_logged_in(self):
+                # login does blocking HTTP — keep it off the qasync event loop
+                # or every reconnect attempt freezes the UI while the server
+                # is unreachable.
+                if await asyncio.to_thread(_ensure_logged_in, self):
                     try:
                         await self._connect_session()
                         backoff = _RECONNECT_INITIAL_BACKOFF
@@ -203,7 +208,8 @@ class Client(QObject):
                 await self._sleep_or_close(backoff)
                 backoff = min(backoff * 2, _RECONNECT_MAX_BACKOFF)
         finally:
-            self._task = None
+            if self._task is asyncio.current_task():
+                self._task = None
             self._connected = False
             self._connecting_event.set()  # unblock join_room even on initial failure
 
