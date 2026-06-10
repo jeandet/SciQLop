@@ -31,12 +31,14 @@ VirtualProductCallback = Callable[
 
 
 def ensure_dt64(x_data):
-    if type(x_data) is np.ndarray:
-        if x_data.dtype == np.dtype("datetime64[ns]"):
-            return x_data
-        elif x_data.dtype == np.float64:
+    if isinstance(x_data, np.ndarray):
+        if np.issubdtype(x_data.dtype, np.datetime64):
+            return x_data.astype("datetime64[ns]", copy=False)
+        if x_data.dtype == np.float64:
             return (x_data * 1e9).astype("datetime64[ns]")
-    raise ValueError(f"can't handle x axis type {type(x_data)}")
+    raise ValueError(
+        "can't handle x axis: expected a datetime64 or float64 (epoch seconds) "
+        f"numpy array, got {getattr(x_data, 'dtype', type(x_data))}")
 
 
 class ArgumentsType(Enum):
@@ -47,7 +49,10 @@ class ArgumentsType(Enum):
 
 
 def _positional_args_types(callback: VirtualProductCallback) -> List[type]:
-    sig = signature(callback, eval_str=True)
+    try:
+        sig = signature(callback, eval_str=True)
+    except NameError:
+        sig = signature(callback)
     return [
         v.annotation for v in sig.parameters.values()
         if v.default == v.empty and depends_marker(v.annotation) is None
@@ -104,9 +109,11 @@ class EasyProvider(DataProvider):
         self._path = path.split('/')
         product_name = self._path[-1]
         product_path = self._path[:-1]
-        metadata.update(
-            {"description": f"Virtual {parameter_type.name} product built from Python function: {self.name}",
-             "stable_id": path})
+        metadata = {
+            **metadata,
+            "description": f"Virtual {parameter_type.name} product built from Python function: {self.name}",
+            "stable_id": path,
+        }
         products.add_node(
             product_path,
             ProductsModelNode(product_name, self.name, metadata, ProductsModelNodeType.PARAMETER, parameter_type, "",

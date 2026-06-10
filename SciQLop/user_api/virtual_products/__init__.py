@@ -109,15 +109,18 @@ def create_virtual_product(path: str, callback: VirtualProductCallback,
         - A callback parameter annotated ``Annotated[SpeasyVariable, Depends("a//b", pad=...)]`` declares a dependency: SciQLop resolves that product over the (optionally padded) time range and injects the result as that argument. The target may be a product path, a VirtualProduct, or a callable(start, stop).
     """
     if product_type == VirtualProductType.Scalar:
-        assert labels is not None and len(labels) == 1
+        if labels is None or len(labels) != 1:
+            raise ValueError("Scalar virtual products need exactly one label")
         return VirtualScalar(path, callback, label=labels[0], debug=debug, cachable=cachable,
                              knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
     elif product_type == VirtualProductType.Vector:
-        assert labels is not None and len(labels) == 3
+        if labels is None or len(labels) != 3:
+            raise ValueError("Vector virtual products need exactly three labels")
         return VirtualVector(path, callback, labels=labels, debug=debug, cachable=cachable,
                              knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
     elif product_type == VirtualProductType.MultiComponent:
-        assert labels is not None
+        if labels is None:
+            raise ValueError("MultiComponent virtual products need a list of labels")
         return VirtualMultiComponent(path, callback, labels=labels, debug=debug, cachable=cachable,
                                      knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
     elif product_type == VirtualProductType.Spectrogram:

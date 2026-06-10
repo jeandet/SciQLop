@@ -1,8 +1,11 @@
 import inspect
+import logging
 import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated, Any, Callable, Optional, Union, get_args, get_origin, get_type_hints
+
+log = logging.getLogger(__name__)
 
 ProductPath = Union[str, list]
 DependencyTarget = Union[ProductPath, object, Callable[[float, float], Any]]
@@ -48,7 +51,13 @@ def depends_marker(annotation) -> Optional[Depends]:
 def extract_dependencies_from_callback(callback) -> list[DependsSpec]:
     try:
         hints = get_type_hints(callback, include_extras=True)
-    except (NameError, TypeError):
+    except (NameError, TypeError) as e:
+        # String annotations that fail to resolve would silently lose their
+        # Depends markers, surfacing later as a confusing "missing positional
+        # argument" at fetch time — warn now, at registration.
+        log.warning("cannot resolve type hints for %s (%s); "
+                    "string-annotated Depends dependencies will be ignored",
+                    getattr(callback, "__qualname__", callback), e)
         hints = {}
     sig = inspect.signature(callback)
     specs = []

@@ -27,8 +27,9 @@ _EXPECTED_COMPONENTS = {
     "vector": 3,
 }
 
-# ensure_dt64 in easy_provider.py only handles these two dtypes
-_ACCEPTED_TIME_DTYPES = {np.dtype("float64"), np.dtype("datetime64[ns]")}
+def _is_accepted_time_dtype(dtype) -> bool:
+    """Mirror of what ensure_dt64 in easy_provider.py accepts."""
+    return dtype == np.dtype("float64") or np.issubdtype(dtype, np.datetime64)
 
 
 def _filter_traceback(tb_text: str) -> str:
@@ -108,9 +109,9 @@ def _check_time_dtype(data) -> List[Diagnostic]:
     x = data[0]
     if not isinstance(x, np.ndarray) or x.size == 0:
         return []
-    if x.dtype not in _ACCEPTED_TIME_DTYPES:
+    if not _is_accepted_time_dtype(x.dtype):
         return [Diagnostic("warning",
-            f"Time vector dtype is {x.dtype} — only float64 and datetime64[ns] "
+            f"Time vector dtype is {x.dtype} — only float64 and datetime64 "
             f"are accepted, this will raise ValueError at plot time")]
     return []
 
