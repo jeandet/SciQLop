@@ -27,6 +27,7 @@ def create_panel(main_window, model):
 @ui_action(
     precondition=lambda model: model.has_panels,
     bundles={"panel": "panels"},
+    consumes=("panel",),
     narrate="Removed panel '{panel}'",
     model_update=lambda model, panel: model.remove_panel(panel),
     verify=lambda main_window, model: count_panels(main_window) == len(model.panels),
@@ -54,6 +55,15 @@ def remove_panel(main_window, model, panel):
 )
 def zoom_panel(main_window, model, panel, t_start, t_stop):
     from SciQLop.core import TimeRange
+
+    # Normalize the drawn range to what the app will actually apply:
+    # swapped bounds are reordered, zero-width ranges are silently no-oped,
+    # and spans larger than the panel zoom limit (default 1 day) are
+    # center-clipped by SciQLopPlots. Returning the normalized values feeds
+    # them to model_update/verify so the model matches the app.
+    t_start, t_stop = min(t_start, t_stop), max(t_start, t_stop)
+    max_span = 80_000.0  # stay under the 1-day (86400 s) default zoom limit
+    t_stop = t_start + max(1.0, min(t_stop - t_start, max_span))
 
     p = main_window.plot_panel(panel)
     if p is not None:

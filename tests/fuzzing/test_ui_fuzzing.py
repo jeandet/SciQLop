@@ -11,7 +11,7 @@ SciQLopUIFuzzer = registry.build_state_machine(
 )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def fuzzer_class(main_window, qtbot):
     """Inject live Qt fixtures into the state machine class."""
     SciQLopUIFuzzer.main_window = main_window

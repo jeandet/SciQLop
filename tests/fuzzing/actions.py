@@ -8,6 +8,7 @@ from typing import Any, Callable
 from hypothesis.stateful import (
     Bundle,
     RuleBasedStateMachine,
+    consumes,
     rule,
     precondition,
     initialize,
@@ -27,6 +28,7 @@ class ActionMeta:
     precondition: Callable | None = None
     target: str | None = None
     bundles: dict[str, str] | None = None      # param_name -> bundle_name
+    consumes: tuple[str, ...] = ()             # bundle params removed from the bundle when drawn
     strategies: dict[str, Any] | None = None   # param_name -> Hypothesis strategy
     settle_timeout_ms: int = 50
 
@@ -39,6 +41,7 @@ def ui_action(
     precondition: Callable | None = None,
     target: str | None = None,
     bundles: dict[str, str] | None = None,
+    consumes: tuple[str, ...] = (),
     strategies: dict[str, Any] | None = None,
     settle_timeout_ms: int = 50,
 ):
@@ -49,6 +52,7 @@ def ui_action(
         precondition=precondition,
         target=target,
         bundles=bundles,
+        consumes=consumes,
         strategies=strategies,
         settle_timeout_ms=settle_timeout_ms,
     )
@@ -208,16 +212,25 @@ class ActionRegistry:
                 rule_kwargs["target"] = bundles_map[meta.target]
 
             for param_name, bundle_name in (meta.bundles or {}).items():
-                rule_kwargs[param_name] = bundles_map[bundle_name]
+                bundle = bundles_map[bundle_name]
+                # consumed draws are removed from the bundle, so e.g. a
+                # deleted panel's name can never be drawn again
+                rule_kwargs[param_name] = (consumes(bundle)
+                                           if param_name in meta.consumes else bundle)
             for param_name, strategy in (meta.strategies or {}).items():
                 rule_kwargs[param_name] = strategy
 
             def make_rule_method(fn, fn_meta):
+                has_target = bool(fn_meta.target)
+
                 def rule_method(self, **kwargs):
-                    return run_action(
+                    result = run_action(
                         fn, self.__class__.main_window,
                         self._model, self._story, **kwargs,
                     )
+                    # Hypothesis health check: rules without a target bundle
+                    # must return None.
+                    return result if has_target else None
 
                 return rule_method
 
