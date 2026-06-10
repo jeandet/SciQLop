@@ -450,13 +450,47 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         if not getattr(self, '_closing', False):
-            event.ignore()
             self._closing = True
-            import asyncio
-            asyncio.ensure_future(self._async_close())
-            return
+            if self._schedule_async_close():
+                event.ignore()
+                return
+            self._close_plugins_sync()
         workspaces_manager_instance().quit()
         super().closeEvent(event)
+
+    @staticmethod
+    def _usable_event_loop():
+        """The qasync loop when it can actually run tasks, else None (e.g.
+        pytest session teardown, where the loop never runs or asyncio.run()
+        in a test has unset the current loop)."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            return None
+        if loop.is_closed() or not loop.is_running():
+            return None
+        return loop
+
+    def _schedule_async_close(self) -> bool:
+        import asyncio
+        loop = self._usable_event_loop()
+        if loop is None:
+            return False
+        asyncio.ensure_future(self._async_close(), loop=loop)
+        return True
+
+    def _close_plugins_sync(self):
+        """Fallback close when no event loop runs: plugins with coroutine
+        close() get the coroutine closed unawaited — better a partial plugin
+        cleanup than aborting the window close."""
+        import inspect
+        from SciQLop.components.plugins import loaded_plugins
+        for plugin in loaded_plugins.__dict__.values():
+            if hasattr(plugin, "close"):
+                result = plugin.close()
+                if inspect.isawaitable(result):
+                    result.close()
 
     async def _async_close(self):
         import asyncio
