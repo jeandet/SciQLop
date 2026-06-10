@@ -246,11 +246,11 @@ def _create_histogram2d(plot_impl, *args, name: str = "histogram",
     _reject_if_colormap_already_present(plot_impl)
     if len(args) == 1 and callable(args[0]):
         impl = plot_impl.histogram2d(args[0], name=name,
-                                     key_bins=x_bins, value_bins=y_bins)
+                                     x_bins=x_bins, y_bins=y_bins)
     elif len(args) == 2:
         x, y = ensure_arrays_of_double(*args)
         impl = plot_impl.histogram2d(x, y, name=name,
-                                     key_bins=x_bins, value_bins=y_bins)
+                                     x_bins=x_bins, y_bins=y_bins)
     else:
         raise TypeError("histogram2d expects (callable,) or (x, y)")
     hist = Histogram2D(impl)
