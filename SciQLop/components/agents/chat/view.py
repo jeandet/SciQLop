@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid as _uuid
 from dataclasses import dataclass, field
+from html import escape as _html_escape
 from pathlib import Path
 from typing import List, Literal, Union
 
@@ -36,7 +37,18 @@ from .history import PromptHistory
 
 @dataclass
 class TextBlock:
+    """Markdown text. ``complete=True`` marks a self-contained markdown unit
+    (a whole assistant message); ``False`` marks a streaming delta that the
+    dock may merge with the next one."""
     text: str = ""
+    complete: bool = False
+
+
+@dataclass
+class ThinkingBlock:
+    """Model thinking, rendered dimmed instead of as markdown."""
+    text: str = ""
+    complete: bool = False
 
 
 @dataclass
@@ -44,7 +56,7 @@ class ImageBlock:
     path: str
 
 
-ContentBlock = Union[TextBlock, ImageBlock]
+ContentBlock = Union[TextBlock, ThinkingBlock, ImageBlock]
 
 
 @dataclass
@@ -120,6 +132,9 @@ class TranscriptView(QTextBrowser):
             if isinstance(block, TextBlock):
                 if block.text:
                     self._insert_markdown(cursor, block.text)
+            elif isinstance(block, ThinkingBlock):
+                if block.text:
+                    self._insert_thinking(cursor, block.text)
             elif isinstance(block, ImageBlock):
                 self._insert_image(cursor, doc, block.path)
 
@@ -127,8 +142,19 @@ class TranscriptView(QTextBrowser):
     def _insert_markdown(cursor: QTextCursor, markdown: str) -> None:
         scratch = QTextDocument()
         scratch.setMarkdown(markdown)
-        cursor.insertBlock()
+        # insertFragment merges the fragment's first block into the current
+        # block, keeping the current block's format — so create the new block
+        # with the fragment's first-block format instead of inheriting the
+        # previous block's (e.g. the h4 role label's).
+        first = scratch.firstBlock()
+        cursor.insertBlock(first.blockFormat(), first.charFormat())
         cursor.insertFragment(QTextDocumentFragment(scratch))
+
+    @staticmethod
+    def _insert_thinking(cursor: QTextCursor, text: str) -> None:
+        body = _html_escape(text.strip()).replace("\n", "<br/>")
+        cursor.insertBlock()
+        cursor.insertHtml(f'<p style="color:#888888"><i>{body}</i></p>')
 
     def _insert_image(self, cursor: QTextCursor, doc: QTextDocument, path: str) -> None:
         image = QImage(path)

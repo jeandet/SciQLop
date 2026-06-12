@@ -2,6 +2,11 @@
 
 ## v0.13.0
 
+### Agent chat
+
+- Fixed markdown rendering breaking while an agent streams its answer (headings, lists and code fences fusing into the previous paragraph), while the same session re-opened later rendered fine. Backends that emit complete per-message texts (Claude — one message per API round between tool calls) had those texts glued together with no separator before rendering; stream blocks now carry a `complete` flag so self-contained markdown units stay separate (token-streaming backends keep merging deltas). Each unit also no longer inherits the previous block's paragraph format (the role label's `h4` used to leak onto the first paragraph, and streamed `## headings` lost their heading level).
+- The transcript now shows the model's thinking (dim italic text above the answer, like Claude Code), both live and when resuming a previous session. A new `ThinkingBlock` is part of the agent backend contract; the Claude backend previously dropped thinking blocks entirely because it only extracted `.text` from SDK content blocks.
+
 ### Windows installer
 
 - SciQLop now installs **per-user without administrator rights**. Both the offline and online Inno Setup installers set `PrivilegesRequired=lowest`, so there is no UAC prompt and the install lands in `%LOCALAPPDATA%\Programs\SciQLop` (Start Menu / Desktop shortcuts follow the per-user locations automatically). A migration step detects a leftover system-wide install from an earlier release and offers to remove it with a single UAC prompt; declining (or lacking admin) does not block the per-user install.

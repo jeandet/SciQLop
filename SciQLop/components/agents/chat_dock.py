@@ -26,7 +26,14 @@ from PySide6.QtWidgets import (
 from SciQLop.components.theming import get_icon
 
 from .backend import AgentBackend, BackendContext
-from .chat import ChatInput, ChatMessage, ImageBlock, TextBlock, TranscriptView
+from .chat import (
+    ChatInput,
+    ChatMessage,
+    ImageBlock,
+    TextBlock,
+    ThinkingBlock,
+    TranscriptView,
+)
 from .registry import available_backends, create_backend
 from .tools import build_sciqlop_tools
 
@@ -365,11 +372,13 @@ class AgentChatDock(QWidget):
 
     @staticmethod
     def _append_block(message: ChatMessage, block) -> None:
-        if isinstance(block, TextBlock):
-            if message.blocks and isinstance(message.blocks[-1], TextBlock):
-                message.blocks[-1].text += block.text
+        if isinstance(block, (TextBlock, ThinkingBlock)):
+            last = message.blocks[-1] if message.blocks else None
+            if type(last) is type(block) and not last.complete:
+                last.text += block.text
+                last.complete = block.complete
             else:
-                message.blocks.append(TextBlock(text=block.text))
+                message.blocks.append(block)
         elif isinstance(block, ImageBlock):
             message.blocks.append(block)
 

@@ -15,9 +15,9 @@ from typing import (
     runtime_checkable,
 )
 
-from .chat import ChatMessage, ImageBlock, TextBlock
+from .chat import ChatMessage, ImageBlock, TextBlock, ThinkingBlock
 
-StreamBlock = TextBlock | ImageBlock
+StreamBlock = TextBlock | ThinkingBlock | ImageBlock
 ConfirmCallback = Callable[[str, dict], Awaitable[bool]]
 
 
