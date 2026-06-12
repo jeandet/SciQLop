@@ -23,12 +23,19 @@ def is_array_of_double(a):
 def _to_float64(a):
     if a is None:
         return None
-    if is_array_of_double(a):
-        return np.ascontiguousarray(a)
-    if hasattr(a, 'dtype') and np.issubdtype(a.dtype, np.datetime64):
+    arr = a if isinstance(a, np.ndarray) else np.asarray(a)
+    if arr.ndim == 0:
+        raise ValueError("scalar (0-d) data is not plottable; pass a 1-D array")
+    if np.issubdtype(arr.dtype, np.complexfloating):
+        raise ValueError(
+            "complex data is not plottable; take .real, .imag or np.abs() "
+            "explicitly")
+    if arr.dtype == np.float64:
+        return np.ascontiguousarray(arr)
+    if np.issubdtype(arr.dtype, np.datetime64):
         from speasy.core import datetime64_to_epoch
-        return np.ascontiguousarray(datetime64_to_epoch(a))
-    return np.ascontiguousarray(np.asarray(a, dtype=np.float64))
+        return np.ascontiguousarray(datetime64_to_epoch(arr))
+    return np.ascontiguousarray(arr.astype(np.float64))
 
 
 def ensure_arrays_of_double(*args):
@@ -266,9 +273,23 @@ def _reject_if_colormap_already_present(plot_impl) -> None:
             )
 
 
+_MAX_HISTOGRAM_CELLS = 25_000_000
+
+
+def validate_histogram_bins(x_bins: int, y_bins: int) -> None:
+    if x_bins < 1 or y_bins < 1:
+        raise ValueError(
+            f"histogram bins must be >= 1 (got x_bins={x_bins}, y_bins={y_bins})")
+    if x_bins * y_bins > _MAX_HISTOGRAM_CELLS:
+        raise ValueError(
+            f"histogram grid {x_bins}x{y_bins} exceeds the "
+            f"{_MAX_HISTOGRAM_CELLS:,}-cell sanity cap; reduce x_bins/y_bins")
+
+
 def _create_histogram2d(plot_impl, *args, name: str = "histogram",
                         x_bins: int = 100, y_bins: int = 100,
                         z_log_scale: bool = False, gradient=None) -> Histogram2D:
+    validate_histogram_bins(x_bins, y_bins)
     _reject_if_colormap_already_present(plot_impl)
     if len(args) == 1 and callable(args[0]):
         impl = plot_impl.histogram2d(args[0], name=name,

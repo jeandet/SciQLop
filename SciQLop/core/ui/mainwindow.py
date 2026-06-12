@@ -6,6 +6,7 @@ import humanize
 import psutil
 
 import PySide6QtAds as QtAds
+import shiboken6
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import QWidget, QMenu
@@ -38,7 +39,10 @@ log = getLogger(__name__)
 def _extract_panel(dock_widget):
     w = dock_widget.widget()
     if isinstance(w, PanelContainer):
-        return w.panel
+        # the panel can die without going through remove_panel (e.g. user code
+        # deleteLater'd it) — a dead Shiboken wrapper must not break the whole
+        # panel enumeration
+        return w.panel if shiboken6.isValid(w.panel) else None
     if isinstance(w, SciQLopMultiPlotPanel):
         return w
     return None
@@ -429,7 +433,27 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self.panel_added.emit(panel)
         self._notify_panels_list_changed()
         panel.destroyed.connect(self._notify_panels_list_changed)
+        panel_name = panel.name
+        panel.destroyed.connect(
+            lambda *_: QtCore.QTimer.singleShot(
+                0, lambda: self._drop_dead_panel_dock(panel_name)))
         return panel
+
+    def _drop_dead_panel_dock(self, name: str) -> None:
+        """A panel died without going through remove_panel (e.g. user code
+        destroyed the widget directly). Drop its zombie dock entry so the dock
+        layout and the panel enumeration stay consistent for sibling panels."""
+        dw = self.dock_manager.findDockWidget(name)
+        if dw is None or _extract_panel(dw) is not None:
+            return
+        log.warning(f"Panel {name!r} was destroyed without remove_panel; "
+                    "cleaning up its dock entry")
+        release_name(name)
+        container = dw.takeWidget()
+        dw.closeDockWidget()
+        if container is not None:
+            container.deleteLater()
+        self._notify_panels_list_changed()
 
     def plot_panels(self) -> List[str]:
         panels = [_extract_panel(dw) for dw in self.dock_manager.dockWidgets()]

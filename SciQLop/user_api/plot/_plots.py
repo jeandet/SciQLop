@@ -1,4 +1,4 @@
-from .enums import ScaleType
+from .enums import PlotType, ScaleType
 from .protocol import Plot
 from ._graphs import (Graph, ColorMap, Histogram2D, to_plottable,
                       ensure_arrays_of_double, _create_histogram2d,
@@ -115,9 +115,36 @@ def to_product_path(product: AnyProductType) -> List[str]:
     return []
 
 
+def plot_product_or_raise(impl, product: AnyProductType, **kwargs):
+    """Call the internal ``plot_product`` with a validated path, turning its
+    silent ``None`` returns into actionable errors."""
+    path = to_product_path(product)
+    if not path or not all(segment.strip() for segment in path):
+        raise ValueError(
+            f"invalid product {product!r}: expected a 'provider//path//product' "
+            "string, a list of path segments, or a VirtualProduct")
+    result = _plot_product(impl, path, **kwargs)
+    if result is None:
+        raise ValueError(
+            f"cannot plot product {'//'.join(path)!r}: not found in the "
+            "products tree, or its provider is unavailable (paths use display "
+            "names from the Products panel, joined with '//')")
+    return result
+
+
+def _concrete_impl(impl):
+    """``panel.plots()`` yields ``SciQLopPlotInterfacePtr`` smart-pointer
+    wrappers whose Shiboken type the C++ binding constructors (plot items,
+    spans, …) reject. Dereference to the most-derived concrete plot once, at
+    wrapper construction, so every downstream call sees the same type
+    regardless of how the plot was obtained."""
+    data = getattr(impl, "data", None)
+    return data() if callable(data) else impl
+
+
 class _BasePlot(Plot):
     def __init__(self, impl):
-        self._impl: Optional[_SciQLopPlot] = impl
+        self._impl: Optional[_SciQLopPlot] = _concrete_impl(impl)
         self._get_impl_or_raise().destroyed.connect(self._on_destroyed)
 
     def _get_impl_or_raise(self):
@@ -344,6 +371,12 @@ class XYPlot(_BasePlot):
         super().__init__(impl)
         assert is_xy_plot(impl)
 
+    @property
+    @on_main_thread
+    def plot_type(self) -> PlotType:
+        self._get_impl_or_raise()
+        return PlotType.XY
+
     @on_main_thread
     def plot(self, *args, **kwargs):
         """Plot data on the plot: two vectors (x, y), three (x, y, z → colormap),
@@ -477,6 +510,12 @@ class TimeSeriesPlot(_BasePlot):
         super().__init__(impl)
         assert is_time_series_plot(impl)
 
+    @property
+    @on_main_thread
+    def plot_type(self) -> PlotType:
+        self._get_impl_or_raise()
+        return PlotType.TimeSeries
+
     @on_main_thread
     def plot(self, *args, **kwargs):
         """Plot data on the plot, either two vectors or a product path or a function.
@@ -507,7 +546,7 @@ class TimeSeriesPlot(_BasePlot):
                 return _bind_y_axis(to_plottable(self._get_impl_or_raise().plot(*args, **kwargs), plot=self), y_axis)
             else:
                 return _bind_y_axis(
-                    to_plottable(_plot_product(self._get_impl_or_raise(), to_product_path(args[0]), **kwargs),
+                    to_plottable(plot_product_or_raise(self._get_impl_or_raise(), args[0], **kwargs),
                                  plot=self),
                     y_axis,
                 )
@@ -622,8 +661,14 @@ class ProjectionPlot:
 
     def __init__(self, impl):
         assert is_projection_plot(impl)
-        self._impl: Optional[_SciQLopNDProjectionPlot] = impl
+        self._impl: Optional[_SciQLopNDProjectionPlot] = _concrete_impl(impl)
         self._get_impl_or_raise().destroyed.connect(self._on_destroyed)
+
+    @property
+    @on_main_thread
+    def plot_type(self) -> PlotType:
+        self._get_impl_or_raise()
+        return PlotType.Projection
 
     def _on_destroyed(self):
         self._impl = None
@@ -664,7 +709,7 @@ class ProjectionPlot:
             The graph object representing the plot.
         """
         return to_plottable(
-            _plot_product(self._get_impl_or_raise(), to_product_path(product), graph_type=_GraphType.ParametricCurve))
+            plot_product_or_raise(self._get_impl_or_raise(), product, graph_type=_GraphType.ParametricCurve))
 
     def _repr_pretty_(self, p, cycle):
         if cycle:

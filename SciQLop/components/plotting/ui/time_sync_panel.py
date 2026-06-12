@@ -2,12 +2,12 @@ from typing import Optional, List, Union
 
 import time as _time
 import numpy as np
-from PySide6.QtCore import QMimeData, QTimer
+from PySide6.QtCore import QMimeData, QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QColor
 from SciQLopPlots import SciQLopMultiPlotPanel, SciQLopTheme, PlotDragNDropCallback, ProductsModel, SciQLopPlot, \
-    ParameterType, GraphType, SciQLopNDProjectionPlot
+    ParameterType, GraphType, SciQLopNDProjectionPlot, OverlayLevel, OverlaySizeMode, OverlayPosition
 
 from SciQLop.components.theming import register_icon
 from SciQLop.core import TimeRange
@@ -581,13 +581,70 @@ def plot_static_data(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProje
     return r
 
 
+class _CallbackErrorOverlay(QObject):
+    """Routes exceptions raised by a plot-function callback (worker thread) to
+    the plot's in-canvas overlay (main thread). Without this the error is only
+    a console traceback while the plot is created 'successfully' and stays
+    empty forever."""
+
+    _error = Signal(str)
+    _success = Signal()
+
+    def __init__(self, f):
+        super().__init__()
+        self._f = f
+        self.__name__ = getattr(f, "__name__", "function")
+        self._plot = None
+        self._pending: Optional[str] = None
+        self._shown = False
+        self._error.connect(self._show)
+        self._success.connect(self._clear)
+
+    def attach(self, plot) -> None:
+        self.setParent(plot)
+        self._plot = plot
+        if self._pending is not None:
+            self._show(self._pending)
+
+    def __call__(self, *args, **kwargs):
+        try:
+            result = self._f(*args, **kwargs)
+        except Exception as e:
+            log.error("plot function %r failed", self.__name__, exc_info=True)
+            message = f"{type(e).__name__}: {e}"
+            if self._plot is None:
+                self._pending = message
+            else:
+                self._error.emit(message)
+            return None
+        if self._shown or self._pending is not None:
+            self._pending = None
+            self._success.emit()
+        return result
+
+    def _show(self, message: str) -> None:
+        self._pending = None
+        self._shown = True
+        if self._plot is not None:
+            self._plot.overlay().show_message(
+                f"{self.__name__}: {message}", OverlayLevel.Error,
+                OverlaySizeMode.FitContent, OverlayPosition.Top)
+
+    def _clear(self) -> None:
+        if self._shown and self._plot is not None:
+            self._shown = False
+            self._plot.overlay().clear_message()
+
+
 def plot_function(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjectionPlot], f, **kwargs):
     target, existing_plot = _resolve_plot_target(p, kwargs)
-    r = target.plot(f, **kwargs)
+    reporter = _CallbackErrorOverlay(f)
+    r = target.plot(reporter, **kwargs)
     if not hasattr(r, '__iter__') and existing_plot is not None:
         r = (existing_plot, r)
     try:
         plot, graph = r
+        reporter.attach(plot)
         panel_name = target.windowTitle() if hasattr(target, "windowTitle") else ""
         plots = target.plots() if hasattr(target, "plots") else []
         plot_index = next((i for i, _p in enumerate(plots)

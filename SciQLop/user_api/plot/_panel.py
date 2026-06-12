@@ -1,3 +1,5 @@
+import math as _math
+
 from expression import Nothing, Option, Some
 from .enums import PlotType, Orientation, GraphType
 from .protocol import Plottable
@@ -13,9 +15,10 @@ from SciQLop.components.plotting.ui.time_sync_panel import (TimeSyncPanel as _Im
                                                             plot_static_data as _plot_static_data,
                                                             plot_function as _plot_function)
 from SciQLop.components.plotting.backend.palette import Palette as _Palette, make_color_list as _make_color_list
-from ._plots import to_product_path, ProjectionPlot, TimeSeriesPlot, XYPlot, to_plottable, is_time_series_plot, \
+from ._plots import to_product_path, plot_product_or_raise, ProjectionPlot, TimeSeriesPlot, XYPlot, to_plottable, is_time_series_plot, \
     is_projection_plot, is_xy_plot, to_plot, AnyProductType, is_product
-from ._graphs import ensure_arrays_of_double, Histogram2D, _create_histogram2d
+from ._graphs import (ensure_arrays_of_double, Histogram2D, _create_histogram2d,
+                      validate_histogram_bins as _validate_histogram_bins)
 from ._thread_safety import on_main_thread
 import numpy as _np
 from speasy.products import SpeasyVariable as _SpeasyVariable
@@ -167,7 +170,7 @@ class PlotPanel:
             A tuple containing the plot and the graph object.
         """
         kwargs = _normalize_plot_kwargs(kwargs)
-        _p, _g = _plot_product(self._get_impl_or_raise(), to_product_path(product), index=plot_index, **kwargs)
+        _p, _g = plot_product_or_raise(self._get_impl_or_raise(), product, index=plot_index, **kwargs)
         wrapped_plot = to_plot(_p)
         return wrapped_plot, to_plottable(_g, plot=wrapped_plot)
 
@@ -201,6 +204,9 @@ class PlotPanel:
             arrays = _speasy_variable_to_arrays(x)
             x, y = arrays[0], arrays[1]
             z = arrays[2] if len(arrays) == 3 else None
+        elif y is None:
+            raise ValueError(
+                "y data is required unless x is a SpeasyVariable")
 
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = _plot_static_data(self._get_impl_or_raise(), *ensure_arrays_of_double(x, y, z), index=plot_index,
@@ -249,6 +255,7 @@ class PlotPanel:
         Tuple[XYPlot, Histogram2D]
             The newly created plot and the histogram plottable.
         """
+        _validate_histogram_bins(x_bins, y_bins)
         impl = self._get_impl_or_raise()
         plot_impl = impl.create_plot(plot_index, _PlotType.BasicXY)
         hist = _create_histogram2d(plot_impl, *args, name=name,
@@ -318,6 +325,12 @@ class PlotPanel:
 
     @on_main_thread
     def remove_plot(self, plot_index: int) -> None:
+        """Remove the plot at ``plot_index`` from the panel.
+
+        Python-style negative indices are supported (``-1`` removes the last
+        plot). Note that remaining plots slide down: removing index 0 twice
+        removes the first *two* plots.
+        """
         from SciQLopPlots import SciQLopPlot
         impl = self._get_impl_or_raise()
         plots = impl.plots()
@@ -340,6 +353,13 @@ class PlotPanel:
         impl = self._get_impl_or_raise()
         plots = impl.plots()
         t0, t1 = float(time_range.start()), float(time_range.stop())
+        if not (_math.isfinite(t0) and _math.isfinite(t1)):
+            raise ValueError(
+                f"time range bounds must be finite (got start={t0}, stop={t1})")
+        if t0 == t1:
+            raise ValueError(
+                f"zero-width time range ({t0} == {t1}); note that TimeRange "
+                "silently parses unrecognized date strings to epoch 0")
         with _tracing.zone("panel.set_time_range", cat="panel",
                            n_plots=len(plots), t0=t0, t1=t1, dt=t1 - t0):
             with _tracing.zone("panel.set_time_axis_range", cat="panel", t0=t0, t1=t1):
@@ -382,9 +402,13 @@ class PlotPanel:
     @zoom_limit_seconds.setter
     @on_main_thread
     def zoom_limit_seconds(self, value: float):
+        value = float(value)
+        if value < 0:
+            raise ValueError(
+                f"zoom_limit_seconds must be >= 0 (0 = unlimited), got {value}")
         bar = self._get_time_range_bar()
         if bar:
-            bar.max_range_seconds = float(value)
+            bar.max_range_seconds = value
 
     @on_main_thread
     def step_forward(self, n: int = 1):
@@ -437,7 +461,10 @@ class PlotPanel:
         exporter = exporters.get(ext)
         if exporter is None:
             raise ValueError(f"Unsupported format '{ext}'. Use one of: {', '.join(exporters)}")
-        exporter(path)
+        if not exporter(path):
+            raise OSError(
+                f"failed to save {path!r}: check that the directory exists "
+                "and is writable")
 
     @on_main_thread
     def save_template(self, name_or_path: str) -> None:
@@ -477,6 +504,8 @@ def plot_panel(name: str) -> Optional[PlotPanel]:
     Returns:
         Optional[PlotPanel]: The plot panel if found, otherwise None.
     """
+    if not isinstance(name, str):
+        raise TypeError(f"panel name must be a str, got {type(name).__name__}")
     p = _get_main_window().plot_panel(name)
     if p is not None:
         return PlotPanel(p)
