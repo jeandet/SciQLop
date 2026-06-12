@@ -18,6 +18,10 @@
 - Destroying a panel's inner widget directly no longer corrupts the dock layout for sibling panels: a dead panel's zombie dock entry is cleaned up automatically, and panel enumeration is robust against half-destroyed Shiboken wrappers (it used to raise and report zero panels while live panels still existed).
 - Validation sweep: `histogram2d` rejects non-positive bins and >25M-cell grids; `plot_data` rejects missing `y`, scalar (0-d) arrays, and complex data (the imaginary part was silently dropped); `zoom_limit_seconds` rejects negative values; `plot_panel(name)` raises `TypeError` for non-string names; `remove_plot` documents its Python-style negative indexing.
 
+### Bug fixes
+
+- Fixed the embedded JupyterLab breaking after package updates (white screen with `ChunkLoadError`, or most Lab plugins failing with settings-API 500s). Workspace venvs used to install both the real `jupyterlab` package and `jupyterlab-js` (pulled via jupyqt → jupyverse) — two distributions shipping the exact same `share/jupyter/lab` data files. Removing or upgrading either one (a `%install`, a plugin change, a SciQLop upgrade re-resolving the venv) deleted the shared files out from under the survivor and left orphan empty directories that crashed the Lab settings endpoint. Workspace venvs now install only `jupyterlab-js` (single owner of the data files), and `prepare_workspace` runs a self-heal after every sync that detects gutted `jupyterlab-js` data files (reinstalls them) and prunes orphan empty directories — so venvs already damaged in the field recover automatically on the next launch.
+
 ### Windows installer
 
 - SciQLop now installs **per-user without administrator rights**. Both the offline and online Inno Setup installers set `PrivilegesRequired=lowest`, so there is no UAC prompt and the install lands in `%LOCALAPPDATA%\Programs\SciQLop` (Start Menu / Desktop shortcuts follow the per-user locations automatically). A migration step detects a leftover system-wide install from an earlier release and offers to remove it with a single UAC prompt; declining (or lacking admin) does not block the per-user install.
