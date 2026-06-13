@@ -13,8 +13,25 @@ class VirtualProductType(Enum):
     Spectrogram = 3
 
 
+def _validate_path(path) -> None:
+    if not isinstance(path, str):
+        raise TypeError(
+            f"virtual product path must be a str, got {type(path).__name__}")
+    if not path.strip() or not all(seg.strip() for seg in path.replace('//', '/').split('/')):
+        raise ValueError(
+            f"virtual product path must be a non-empty product-tree path "
+            f"(e.g. 'my_products//density'), got {path!r}")
+
+
+def _validate_callback(callback) -> None:
+    if not callable(callback):
+        raise TypeError(f"{callback!r} is not a callable object")
+
+
 class VirtualProduct:
     def __init__(self, path: str, callback: VirtualProductCallback, product_type: VirtualProductType):
+        _validate_path(path)
+        _validate_callback(callback)
         self._path = path
         self._callback = callback
         self._product_type = product_type
@@ -33,6 +50,8 @@ class VirtualScalar(VirtualProduct):
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
                  knobs_model=None, knobs_kwarg_name="knobs"):
         super(VirtualScalar, self).__init__(path, callback, VirtualProductType.Scalar)
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("Scalar virtual products need exactly one non-empty label")
         self._impl = _EasyScalar(path, callback, component_name=label, metadata={},
                                  debug=debug, cacheable=cachable,
                                  knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
@@ -43,6 +62,8 @@ class VirtualVector(VirtualProduct):
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
                  knobs_model=None, knobs_kwarg_name="knobs"):
         super(VirtualVector, self).__init__(path, callback, VirtualProductType.Vector)
+        if not isinstance(labels, (list, tuple)) or len(labels) != 3:
+            raise ValueError("Vector virtual products need exactly three labels")
         self._impl = _EasyVector(path, callback, components_names=labels, metadata={},
                                  debug=debug, cacheable=cachable,
                                  knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
@@ -53,6 +74,8 @@ class VirtualMultiComponent(VirtualProduct):
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
                  knobs_model=None, knobs_kwarg_name="knobs"):
         super(VirtualMultiComponent, self).__init__(path, callback, VirtualProductType.MultiComponent)
+        if not isinstance(labels, (list, tuple)) or not labels:
+            raise ValueError("MultiComponent virtual products need a non-empty list of labels")
         self._impl = _EasyMultiComponent(path, callback, components_names=labels, metadata={},
                                          debug=debug, cacheable=cachable,
                                          knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
@@ -94,12 +117,15 @@ def create_virtual_product(path: str, callback: VirtualProductCallback,
         Name of the keyword argument used to pass the knobs model instance to the callback (default: "knobs").
     Returns
     -------
-    Optional[VirtualProduct]
-        The virtual product object. If the product type is not recognized, None is returned.
+    VirtualProduct
+        The virtual product object.
     Raises
     ------
-    AssertionError
-        If the labels are not provided or do not match the product type.
+    TypeError
+        If *path* is not a str, *callback* is not callable, or *product_type*
+        is not a :class:`VirtualProductType`.
+    ValueError
+        If *path* is empty or the labels do not match the product type.
     Notes
     -----
         - The callback can be a function, a partial function, a lambda, or a callable object. It must take two arguments, the start and stop times with type annotations. It can return a SpeasyVariable, a tuple of numpy arrays, or None.
@@ -108,6 +134,12 @@ def create_virtual_product(path: str, callback: VirtualProductCallback,
         - If a virtual product already exists at the given path, it will be replaced with the new one.
         - A callback parameter annotated ``Annotated[SpeasyVariable, Depends("a//b", pad=...)]`` declares a dependency: SciQLop resolves that product over the (optionally padded) time range and injects the result as that argument. The target may be a product path, a VirtualProduct, or a callable(start, stop).
     """
+    _validate_path(path)
+    _validate_callback(callback)
+    if not isinstance(product_type, VirtualProductType):
+        raise TypeError(
+            f"product_type must be a VirtualProductType "
+            f"(e.g. VirtualProductType.Scalar), got {product_type!r}")
     if product_type == VirtualProductType.Scalar:
         if labels is None or len(labels) != 1:
             raise ValueError("Scalar virtual products need exactly one label")
@@ -123,10 +155,8 @@ def create_virtual_product(path: str, callback: VirtualProductCallback,
             raise ValueError("MultiComponent virtual products need a list of labels")
         return VirtualMultiComponent(path, callback, labels=labels, debug=debug, cachable=cachable,
                                      knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
-    elif product_type == VirtualProductType.Spectrogram:
-        return VirtualSpectrogram(path, callback, debug=debug, cachable=cachable,
-                                  knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
-    return None
+    return VirtualSpectrogram(path, callback, debug=debug, cachable=cachable,
+                              knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
 
 
 from SciQLop.user_api.virtual_products.types import Scalar, Vector, MultiComponent, Spectrogram

@@ -226,10 +226,24 @@ class _BasePlot(Plot):
         ----------
         graph : Graph
             The graph to remove. Obtained from ``plot()``, ``scatter()``, etc.
+
+        Raises
+        ------
+        TypeError
+            If *graph* is not a graph wrapper.
+        ValueError
+            If the graph was already removed, or belongs to another plot.
         """
+        if not isinstance(graph, (Graph, ColorMap, Histogram2D)):
+            raise TypeError(
+                f"remove_graph expects a Graph, ColorMap or Histogram2D, "
+                f"got {type(graph).__name__}")
         if graph._impl is None:
             raise ValueError("The graph does not exist anymore.")
-        self._get_impl_or_raise().remove_plottable(graph._impl)
+        impl = self._get_impl_or_raise()
+        if graph._impl not in (impl.plottables() or []):
+            raise ValueError("graph does not belong to this plot")
+        impl.remove_plottable(graph._impl)
 
     @on_main_thread
     def rescale_axes(self) -> None:

@@ -7,30 +7,31 @@ Usage::
     # List all catalogs
     catalogs.list()
 
-    # List catalogs under a specific provider
-    catalogs.list("tscat")
+    # List catalogs under a specific provider ("My Catalogs" is the local
+    # tscat store; "Remote" is read-only)
+    catalogs.list("My Catalogs")
 
     # Get a catalog as a speasy Catalog object
-    cat = catalogs.get("tscat//my_catalog")
+    cat = catalogs.get("My Catalogs//my_catalog")
 
     # Save events (creates the catalog if it doesn't exist)
-    catalogs.save("tscat//my_catalog", [
+    catalogs.save("My Catalogs//my_catalog", [
         ("2020-01-01", "2020-01-02"),
         ("2020-02-01", "2020-02-03", {"label": "storm"}),
     ])
 
     # Strict create (raises ValueError if already exists)
-    catalogs.create("tscat//new_catalog", existing_speasy_catalog)
+    catalogs.create("My Catalogs//new_catalog", existing_speasy_catalog)
 
     # Append events to an existing catalog
-    catalogs.add_events("tscat//my_catalog", [("2020-03-01", "2020-03-02")])
+    catalogs.add_events("My Catalogs//my_catalog", [("2020-03-01", "2020-03-02")])
 
     # Remove specific events (pass events from get())
-    cat = catalogs.get("tscat//my_catalog")
-    catalogs.remove_events("tscat//my_catalog", [cat[0]])
+    cat = catalogs.get("My Catalogs//my_catalog")
+    catalogs.remove_events("My Catalogs//my_catalog", [cat[0]])
 
     # Delete an entire catalog
-    catalogs.remove("tscat//my_catalog")
+    catalogs.remove("My Catalogs//my_catalog")
 
 Paths use ``//`` as separator: ``"provider//optional//sub//path//catalog_name"``.
 Drag-and-drop from the catalog tree generates these paths automatically.

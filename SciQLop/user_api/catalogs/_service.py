@@ -18,6 +18,8 @@ _UUID_KEY = "__sciqlop_uuid__"
 
 
 def _split_segments(path: str) -> list[str]:
+    if not isinstance(path, str):
+        raise TypeError(f"catalog path must be a str, got {type(path).__name__}")
     segments = path.split("//")
     for seg in segments:
         if "/" in seg:
@@ -58,18 +60,34 @@ def _event_to_internal(event: SpeasyEvent) -> CatalogEvent:
     return CatalogEvent(uuid=uuid, start=event.start_time, stop=event.stop_time, meta=meta)
 
 
+def _reject_inverted_events(catalog: SpeasyCatalog) -> SpeasyCatalog:
+    """Mirror tscat's rule (start > stop raises, start == stop is fine) at the
+    API boundary: tscat enforces it asynchronously on its driver thread, so
+    without this check the user-api cache stores events the backing store
+    silently rejected."""
+    for event in catalog:
+        if event.start_time > event.stop_time:
+            raise ValueError(
+                f"event start must be before stop, got "
+                f"{event.start_time} > {event.stop_time}")
+    return catalog
+
+
 def _normalize_input(data) -> SpeasyCatalog:
     if isinstance(data, SpeasyCatalog):
-        return data
+        return _reject_inverted_events(data)
     events = []
     for item in data:
         if len(item) == 2:
             events.append(SpeasyEvent(item[0], item[1]))
         elif len(item) == 3:
+            if not isinstance(item[2], dict):
+                raise TypeError(
+                    f"event meta must be a dict, got {type(item[2]).__name__}")
             events.append(SpeasyEvent(item[0], item[1], meta=item[2]))
         else:
             raise ValueError(f"Expected (start, stop) or (start, stop, meta), got {len(item)} elements")
-    return SpeasyCatalog(name="", events=events)
+    return _reject_inverted_events(SpeasyCatalog(name="", events=events))
 
 
 class CatalogService:
@@ -155,7 +173,7 @@ class CatalogService:
         ----------
         prefix : str, optional
             If given, only catalogs whose path starts with this prefix are
-            returned.  E.g. ``"tscat"`` lists all tscat catalogs,
+            returned.  E.g. ``"My Catalogs"`` lists all local catalogs,
             ``"cocat//room_id"`` lists catalogs in a specific cocat room.
 
         Returns
@@ -184,7 +202,7 @@ class CatalogService:
         Parameters
         ----------
         path : str
-            Fully-qualified catalog path (e.g. ``"tscat//my_catalog"``).
+            Fully-qualified catalog path (e.g. ``"My Catalogs//my_catalog"``).
 
         Returns
         -------

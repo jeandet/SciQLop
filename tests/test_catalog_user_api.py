@@ -642,3 +642,68 @@ def test_import_catalogs_singleton():
     assert hasattr(catalogs, 'save')
     assert hasattr(catalogs, 'create')
     assert hasattr(catalogs, 'remove')
+
+
+# ---------------------------------------------------------------------------
+# Round-2 fuzzing validation (docs/api-fuzzing-report-round2-2026-06-12.md)
+# ---------------------------------------------------------------------------
+
+class TestEventOrderingValidation:
+    """R2-1 — the user-api path stored events that tscat itself rejects
+    (start > stop), silently desyncing the two stores. Mirror tscat's rule
+    (`start > stop` raises, start == stop is allowed) at the API boundary,
+    before anything is created or dispatched."""
+
+    def test_save_rejects_inverted_event(self, catalog_service, dummy_provider):
+        with pytest.raises(ValueError, match="before stop"):
+            catalog_service.save("IsolatedDummy//inverted",
+                                 [("2020-01-02", "2020-01-01")])
+
+    def test_save_rejects_inverted_event_before_creating_catalog(
+            self, catalog_service, dummy_provider):
+        with pytest.raises(ValueError):
+            catalog_service.save("IsolatedDummy//inverted",
+                                 [("2020-01-02", "2020-01-01")])
+        assert "IsolatedDummy//inverted" not in catalog_service.list()
+
+    def test_create_rejects_inverted_event(self, catalog_service, dummy_provider):
+        with pytest.raises(ValueError, match="before stop"):
+            catalog_service.create("IsolatedDummy//inverted2",
+                                   [("2020-01-02", "2020-01-01")])
+
+    def test_add_events_rejects_inverted_event(self, catalog_service, dummy_provider):
+        with pytest.raises(ValueError, match="before stop"):
+            catalog_service.add_events("IsolatedDummy//room1//Catalog-0",
+                                       [("2020-01-02", "2020-01-01")])
+
+    def test_save_rejects_inverted_event_in_speasy_catalog(
+            self, catalog_service, dummy_provider):
+        from speasy.products.catalog import Catalog as SpeasyCatalog, Event as SpeasyEvent
+
+        cat = SpeasyCatalog(name="x", events=[SpeasyEvent("2020-01-02", "2020-01-01")])
+        with pytest.raises(ValueError, match="before stop"):
+            catalog_service.save("IsolatedDummy//inverted3", cat)
+
+    def test_zero_duration_event_is_allowed(self, catalog_service, dummy_provider):
+        catalog_service.save("IsolatedDummy//instant",
+                             [("2020-01-01", "2020-01-01")])
+        events = catalog_service.get("IsolatedDummy//instant")
+        assert len(events) == 1
+
+
+class TestCatalogInputTypeErrors:
+    """R2-8 / R2-13 — raw AttributeError / cryptic dict-update errors on
+    wrong input types."""
+
+    def test_get_none_path_raises_type_error(self, catalog_service, dummy_provider):
+        with pytest.raises(TypeError, match="path must be a str"):
+            catalog_service.get(None)
+
+    def test_save_none_path_raises_type_error(self, catalog_service, dummy_provider):
+        with pytest.raises(TypeError, match="path must be a str"):
+            catalog_service.save(None, [("2020-01-01", "2020-01-02")])
+
+    def test_non_dict_meta_raises_type_error(self, catalog_service, dummy_provider):
+        with pytest.raises(TypeError, match="meta must be a dict"):
+            catalog_service.save("IsolatedDummy//meta",
+                                 [("2020-01-01", "2020-01-02", "not_a_dict")])

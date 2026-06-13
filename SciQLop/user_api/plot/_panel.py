@@ -288,6 +288,9 @@ class PlotPanel:
         from SciQLop.components.plotting.ui.time_sync_panel import wire_layer_renderer
         from SciQLopPlots import SciQLopPlot
 
+        if scope not in ("auto", "panel", "plot"):
+            raise ValueError(
+                f"invalid layer scope {scope!r}: expected 'auto', 'panel' or 'plot'")
         impl = self._get_impl_or_raise()
         plots = impl.plots()
         plot_index = _normalize_plot_index(plot_index, len(plots))

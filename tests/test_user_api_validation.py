@@ -115,8 +115,10 @@ class TestTimeRangeValidation:
     def test_garbage_string_time_range_rejected(self, plot_panel):
         from SciQLop.user_api.plot import TimeRange
 
-        # the C++ parser silently maps unparsable date strings to NaN bounds
-        with pytest.raises(ValueError, match="finite"):
+        # round-2 #6 leftover: TimeRange now parses date strings on the Python
+        # side, so garbage is rejected at construction (ParserError, a
+        # ValueError) instead of silently becoming a NaN range.
+        with pytest.raises(ValueError):
             plot_panel.time_range = TimeRange("garbage", "dates")
 
     def test_zero_width_time_range_rejected(self, plot_panel):
@@ -234,3 +236,162 @@ class TestPlotFunctionErrorOverlay:
         qtbot.waitUntil(lambda: "transient boom" in plot.overlay.text, timeout=5000)
         plot_panel.time_range = TimeRange(2e9, 2e9 + 3600.0)
         qtbot.waitUntil(lambda: plot.overlay.text == "", timeout=5000)
+
+
+# ---------------------------------------------------------------------------
+# Round-2 fuzzing (docs/api-fuzzing-report-round2-2026-06-12.md)
+# ---------------------------------------------------------------------------
+
+class TestRemoveGraphOwnership:
+    """R2-2 — ``plot_a.remove_graph(graph_b)`` destroyed another plot's graph;
+    R2-12 — non-graph arguments raised a raw AttributeError."""
+
+    @pytest.fixture
+    def two_plots(self, plot_panel):
+        from SciQLop.user_api.plot import PlotType
+
+        x = np.linspace(0.0, 100.0, 50)
+        plot_a, graph_a = plot_panel.plot_data(x, np.sin(x), plot_type=PlotType.TimeSeries)
+        plot_b, graph_b = plot_panel.plot_data(x, np.cos(x), plot_type=PlotType.TimeSeries)
+        return plot_a, graph_a, plot_b, graph_b
+
+    def test_foreign_graph_is_rejected(self, qapp, two_plots):
+        plot_a, _graph_a, _plot_b, graph_b = two_plots
+        with pytest.raises(ValueError, match="does not belong to this plot"):
+            plot_a.remove_graph(graph_b)
+
+    def test_foreign_graph_survives(self, qapp, two_plots):
+        plot_a, _graph_a, _plot_b, graph_b = two_plots
+        with pytest.raises(ValueError):
+            plot_a.remove_graph(graph_b)
+        _flush_deferred_deletes(qapp)
+        assert graph_b.data is not None  # still alive
+
+    def test_own_graph_removal_still_works(self, qapp, two_plots):
+        plot_a, graph_a, _plot_b, _graph_b = two_plots
+        plot_a.remove_graph(graph_a)
+        _flush_deferred_deletes(qapp)
+        with pytest.raises(ValueError, match="does not exist anymore"):
+            graph_a.data
+
+    @pytest.mark.parametrize("bad", [42, "graph", None, object()])
+    def test_non_graph_argument_raises_type_error(self, two_plots, bad):
+        plot_a, *_ = two_plots
+        with pytest.raises(TypeError, match="expects a Graph"):
+            plot_a.remove_graph(bad)
+
+
+class TestTimeRangeStringParsing:
+    """Round-1 #6 leftover — ``TimeRange('garbage', 'dates')`` silently became
+    a NaN range (rendered as 1970); the C++ (str, str) overload swallows
+    parse failures."""
+
+    def test_garbage_strings_raise(self):
+        from SciQLop.user_api import TimeRange
+
+        with pytest.raises(ValueError):
+            TimeRange("garbage", "dates")
+
+    def test_valid_strings_parse_to_utc_epochs(self):
+        from SciQLop.user_api import TimeRange
+
+        r = TimeRange("2020-01-01", "2020-01-02")
+        assert r.start() == 1577836800.0
+        assert r.stop() == 1577836800.0 + 86400.0
+
+    def test_floats_and_datetimes_still_work(self):
+        from datetime import datetime, timezone
+        from SciQLop.user_api import TimeRange
+
+        assert TimeRange(1.0, 2.0).start() == 1.0
+        r = TimeRange(datetime(2020, 1, 1, tzinfo=timezone.utc),
+                      datetime(2020, 1, 2, tzinfo=timezone.utc))
+        assert r.start() == 1577836800.0
+
+    def test_is_still_a_sciqlopplotrange(self):
+        from SciQLopPlots import SciQLopPlotRange
+        from SciQLop.user_api import TimeRange
+
+        assert isinstance(TimeRange(1.0, 2.0), SciQLopPlotRange)
+
+
+class TestAddLayerScopeValidation:
+    """R2-10 — a bogus ``scope`` was accepted silently."""
+
+    def test_bogus_scope_raises(self, plot_panel):
+        from SciQLop.user_api.plot import PlotType
+
+        x = np.linspace(0.0, 100.0, 50)
+        plot_panel.plot_data(x, np.sin(x), plot_type=PlotType.TimeSeries)
+        with pytest.raises(ValueError, match="scope"):
+            plot_panel.add_layer(lambda start, stop: [], scope="bogus_scope")
+
+
+class TestCreateVirtualProductValidation:
+    """R2-3/4/6/7/8 — ``create_virtual_product`` silently returned None on a
+    string product_type, accepted empty paths, and masked every argument
+    error behind the Scalar label message."""
+
+    @staticmethod
+    def _cb(start: float, stop: float):
+        return None
+
+    def test_string_product_type_raises_type_error(self, qapp):
+        from SciQLop.user_api.virtual_products import create_virtual_product
+
+        with pytest.raises(TypeError, match="product_type"):
+            create_virtual_product("fuzz//p1", self._cb, "Scalar", labels=["x"])
+
+    def test_empty_path_raises_value_error(self, qapp):
+        from SciQLop.user_api.virtual_products import (
+            create_virtual_product, VirtualProductType)
+
+        with pytest.raises(ValueError, match="path"):
+            create_virtual_product("", self._cb, VirtualProductType.Scalar,
+                                   labels=["x"])
+
+    def test_none_path_raises_type_error(self, qapp):
+        from SciQLop.user_api.virtual_products import (
+            create_virtual_product, VirtualProductType)
+
+        with pytest.raises(TypeError, match="path"):
+            create_virtual_product(None, self._cb, VirtualProductType.Scalar,
+                                   labels=["x"])
+
+    def test_bad_callback_reported_before_labels(self, qapp):
+        """R2-6 — with cb=42 AND missing labels, the error must blame the
+        callback, not the labels."""
+        from SciQLop.user_api.virtual_products import (
+            create_virtual_product, VirtualProductType)
+
+        with pytest.raises(TypeError, match="callable"):
+            create_virtual_product("fuzz//p2", 42, VirtualProductType.Scalar)
+
+    def test_bad_path_reported_before_labels(self, qapp):
+        from SciQLop.user_api.virtual_products import (
+            create_virtual_product, VirtualProductType)
+
+        with pytest.raises(ValueError, match="path"):
+            create_virtual_product("", self._cb, VirtualProductType.Scalar)
+
+    def test_scalar_label_rule_unchanged(self, qapp):
+        from SciQLop.user_api.virtual_products import (
+            create_virtual_product, VirtualProductType)
+
+        with pytest.raises(ValueError, match="exactly one label"):
+            create_virtual_product("fuzz//p3", self._cb, VirtualProductType.Scalar,
+                                   labels=["a", "b", "c"])
+
+    def test_direct_scalar_ctor_rejects_none_label(self, qapp):
+        """R2-7 — the direct class constructors accepted what
+        create_virtual_product rejects."""
+        from SciQLop.user_api.virtual_products import VirtualScalar
+
+        with pytest.raises((TypeError, ValueError)):
+            VirtualScalar("fuzz//p4", self._cb, label=None)
+
+    def test_direct_vector_ctor_rejects_empty_labels(self, qapp):
+        from SciQLop.user_api.virtual_products import VirtualVector
+
+        with pytest.raises(ValueError, match="exactly three labels"):
+            VirtualVector("fuzz//p5", self._cb, labels=[])
