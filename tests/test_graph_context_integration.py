@@ -308,16 +308,39 @@ def test_add_graph_context_actions_clipboard(qtbot):
         providers.pop("ClipProv", None)
 
 
-def test_show_context_menu_wires_add_graph_context_actions():
-    """_show_context_menu calls add_graph_context_actions(menu, self).
+def test_panel_menu_nests_copy_python_code_under_export_share(qtbot):
+    """The panel context menu wires the 'Copy Python code' submenu inside the
+    'Export & Share' group (2026-06-14 grouping refactor)."""
+    import numpy as np
+    from SciQLop.components.plotting.ui.time_sync_panel import (
+        TimeSyncPanel, plot_static_data,
+    )
+    from SciQLop.core.graph_context import build_speasy_ctx, attach_context
+    from SciQLop.components.plotting.backend.data_provider import providers
 
-    Verified via source inspection — QMenu.exec() enters a native modal loop
-    we can't unblock from Python.
-    """
-    import inspect
-    from SciQLop.components.plotting.ui.time_sync_panel import TimeSyncPanel
-    src = inspect.getsource(TimeSyncPanel._show_context_menu)
-    assert "add_graph_context_actions(menu, self)" in src
+    class _FakeProvider:
+        name = "FakeProv"
+        def python_snippets(self, ctx, graph=None):
+            return {"Reproduce in SciQLop": f"# {ctx.speasy_id}"}
+
+    providers["FakeProv"] = _FakeProvider()
+    panel = TimeSyncPanel('wire', show_search_overlay=False)
+    qtbot.addWidget(panel)
+    _, graph = plot_static_data(panel, np.array([0.0, 1.0]), np.array([0.0, 1.0]))
+    ctx = build_speasy_ctx(graph, panel_name='wire', plot_index=0,
+                           speasy_id='x/y', graph_type='Line',
+                           product_path=['x', 'y'])
+    ctx.provider_name = "FakeProv"
+    attach_context(graph, ctx)
+    try:
+        menu = panel._build_context_menu()
+        export = next(a.menu() for a in menu.actions()
+                      if a.menu() and a.text().replace("&&", "&") == "Export & Share")
+        copy_titles = [a.text() for a in export.actions()
+                       if a.menu() and a.text() == "Copy Python code"]
+        assert copy_titles == ["Copy Python code"]
+    finally:
+        providers.pop("FakeProv", None)
 
 
 def test_inspector_tree_tooltip_renders_on_graph_row(qtbot):

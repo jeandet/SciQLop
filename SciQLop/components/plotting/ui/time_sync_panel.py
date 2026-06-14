@@ -910,20 +910,36 @@ class TimeSyncPanel(SciQLopMultiPlotPanel):
         return super().eventFilter(obj, event)
 
     def _show_context_menu(self, global_pos):
+        self._build_context_menu().exec(global_pos)
+
+    def _build_context_menu(self):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
         self._catalog_manager.build_catalogs_menu(menu)
         menu.addSeparator()
-        menu.addAction("Export as PNG\u2026", self._export_png)
-        menu.addAction("Export as PDF\u2026", self._export_pdf)
-        menu.addSeparator()
-        if self._template_source_path:
-            menu.addAction("Update template", self._update_template)
-        menu.addAction("Save as template\u2026", self._quick_save_template)
-        menu.addAction("Export template\u2026", self._export_template)
+        self._build_export_share_menu(menu)
+        self._build_templates_menu(menu)
         self._append_knob_reset_actions(menu)
-        add_graph_context_actions(menu, self)
-        menu.exec(global_pos)
+        return menu
+
+    def _build_export_share_menu(self, menu):
+        from PySide6.QtWidgets import QMenu
+        # '&&' renders a literal ampersand; a lone '&' would become a mnemonic.
+        # Parent the submenu to `menu` so it stays C++-owned after this returns.
+        sub = QMenu("Export && Share", menu)
+        menu.addMenu(sub)
+        sub.addAction("Export as PNG\u2026", self._export_png)
+        sub.addAction("Export as PDF\u2026", self._export_pdf)
+        add_graph_context_actions(sub, self)
+
+    def _build_templates_menu(self, menu):
+        from PySide6.QtWidgets import QMenu
+        sub = QMenu("Templates", menu)
+        menu.addMenu(sub)
+        if self._template_source_path:
+            sub.addAction("Update template", self._update_template)
+        sub.addAction("Save as template\u2026", self._quick_save_template)
+        sub.addAction("Export template\u2026", self._export_template)
 
     def _append_knob_reset_actions(self, menu):
         actions = []
