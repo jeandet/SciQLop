@@ -208,6 +208,16 @@ body.details-open {
 .status-badge.installed { background: #2ea043; color: #ffffff; }
 .status-badge.update { background: #d29b00; color: #ffffff; }
 
+.card-badge {
+    display: inline-block;
+    font-size: 0.7em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--Highlight);
+    color: var(--HighlightedText);
+    margin-right: 4px;
+}
+
 /* --- Details panel --- */
 
 #details-panel {

@@ -463,7 +463,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.body.addEventListener("click", function(e) {
-        if (!e.target.closest(".card, #details-panel, #lightbox, .tag-chip, .tab, #toolbar")) {
+        if (!e.target.closest(".tile, #details-panel, #lightbox, .tag-chip, .tab, #toolbar")) {
             hideDetails();
         }
     });
