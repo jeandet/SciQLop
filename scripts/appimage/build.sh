@@ -6,8 +6,8 @@ ABSOLUTE_SCRIPT_DIR=$(readlink -f "$SCRIPT_DIR")
 SCIQLOP_ROOT=$ABSOLUTE_SCRIPT_DIR/../../
 
 PYTHON_VERSION=3.14
-NODE_VERSION=23.11.0
-UV_VERSION=0.11.2
+NODE_VERSION=24.17.0
+UV_VERSION=0.11.21
 UV_URL="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-x86_64-unknown-linux-gnu.tar.gz"
 
 WORK=/tmp/sciqlop

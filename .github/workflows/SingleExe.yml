@@ -49,7 +49,7 @@ jobs:
           APPLE_ID_PWD: ${{ (github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && secrets.APPLE_ID_PWD || '' }}
           APPLE_TEAM_ID: ${{ (github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && secrets.APPLE_TEAM_ID || '' }}
         run: |
-          brew install graphicsmagick imagemagick dylibbundler
+          brew install graphicsmagick imagemagick
           npm install --global create-dmg
           bash scripts/macos/make_dmg.sh
       - name: Save packages as artifacts
@@ -85,7 +85,7 @@ jobs:
           APPLE_ID_PWD: ${{ (github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && secrets.APPLE_ID_PWD || '' }}
           APPLE_TEAM_ID: ${{ (github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && secrets.APPLE_TEAM_ID || '' }}
         run: |
-          brew install graphicsmagick imagemagick dylibbundler coreutils
+          brew install graphicsmagick imagemagick coreutils
           npm install --global create-dmg
           bash scripts/macos/make_dmg.sh
       - name: Save packages as artifacts

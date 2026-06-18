@@ -6,10 +6,9 @@ DIST=$SCIQLOP_ROOT/dist
 ICONDIR=$DIST/SciQLop.app/Contents/Resources/SciQLop.iconset
 ARCH=$(uname -m)
 
-OPENSSL_VERSION=3.5.0
-PYTHON_VERSION=3.12.10
-NODE_VERSION=23.11.0
-UV_VERSION=0.11.2
+PYTHON_VERSION=3.14
+NODE_VERSION=24.17.0
+UV_VERSION=0.11.21
 
 mkdir -p $DIST
 
@@ -72,33 +71,9 @@ function download_and_extract() {
   fi
 }
 
-download_and_extract  https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz
-
-cd $DIST/openssl-$OPENSSL_VERSION
-if [[ $ARCH == "arm64" ]]; then
-  ./Configure darwin64-arm64-cc --prefix=$PREFIX_ABS > ../openssl-configure.log
-else
-  ./Configure darwin64-x86_64-cc --prefix=$PREFIX_ABS > ../openssl-configure.log
-fi
-make -j > ../openssl-make.log
-make install install_sw > ../openssl-install.log # skip install_docs
-cd -
-
-export PKG_CONFIG_PATH=$(realpath $DIST/SciQLop.app/Contents/Resources/usr/local/lib/pkgconfig)
-
-
-download_and_extract https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz
-cd $SCIQLOP_ROOT/dist/Python-$PYTHON_VERSION
-./configure --enable-optimizations --with-openssl=$PREFIX_ABS --prefix=$PREFIX_ABS > ../python-configure.log
-make -j > ../python-make.log
-make install  > ../python-install.log
-cd -
-
 ########################################
 # Fetch uv standalone
 ########################################
-
-PYTHON_BIN=$DIST/SciQLop.app/Contents/Resources/usr/local/bin/python3
 
 mkdir -p $DIST/SciQLop.app/Contents/Resources/opt/uv
 
@@ -118,16 +93,32 @@ chmod +x $DIST/SciQLop.app/Contents/Resources/opt/uv/uv
 
 UV_BIN=$DIST/SciQLop.app/Contents/Resources/opt/uv/uv
 
-# On x86_64, the from-source Python links against Homebrew's libintl.8.dylib.
-# Newer Homebrew gettext sets its install name to `@loader_path/lib/libintl.8.dylib`,
-# which dyld resolves relative to the consuming binary's directory. The bundled
-# python3 lives in `usr/local/bin/`, so the dylib must sit at
-# `usr/local/bin/lib/libintl.8.dylib`. Stage it BEFORE any subsequent invocation
-# of $PYTHON_BIN (uv pip install would otherwise SIGABRT in dyld).
-if [[ $ARCH == "x86_64" ]]; then
-  mkdir -p "$PREFIX_ABS/bin/lib"
-  cp "$(brew --prefix gettext)/lib/libintl.8.dylib" "$PREFIX_ABS/bin/lib/"
-fi
+########################################
+# Fetch Python (python-build-standalone via uv)
+#
+# python-build-standalone is fully self-contained and relocatable: its install
+# names are @executable_path/@loader_path-relative, it bundles its own OpenSSL,
+# and it has no Homebrew linkage — so this replaces both the from-source OpenSSL
+# and CPython builds and drops the old libintl/gettext hack entirely. We stage
+# it under a temp install-dir, then merge its prefix into usr/local/ so python3
+# lands at usr/local/bin/python3 — the path the launcher and the signing pass
+# already expect. bin/ and lib/ stay siblings, so the @executable_path/../lib
+# install names keep resolving.
+########################################
+
+PY_STAGING=$DIST/python-staging
+rm -rf $PY_STAGING
+$UV_BIN python install $PYTHON_VERSION --install-dir $PY_STAGING
+PBS_DIR=$(ls -d $PY_STAGING/cpython-* | head -1)
+rsync -aq $PBS_DIR/ $PREFIX_ABS/
+
+PYTHON_BIN=$PREFIX_ABS/bin/python3
+
+# Ensure the python3 entry point exists (some builds only ship python3.x).
+ln -sf python$PYTHON_VERSION $PREFIX_ABS/bin/python3
+
+# Remove the PEP 668 marker so `uv pip install` works against this interpreter.
+find $PREFIX_ABS/lib -maxdepth 2 -name EXTERNALLY-MANAGED -delete
 
 ########################################
 # Install SciQLop using uv

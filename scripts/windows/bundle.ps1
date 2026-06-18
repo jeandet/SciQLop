@@ -7,8 +7,8 @@ $Dist = if ($env:SCIQLOP_DIST_DIR) { $env:SCIQLOP_DIST_DIR } else { "D:\dist" }
 $PackageDir = "$Dist\S"
 
 $PythonVersion = "3.14"
-$NodeVersion = "23.11.0"
-$UvVersion = "0.11.2"
+$NodeVersion = "24.17.0"
+$UvVersion = "0.11.21"
 
 # Read version from pyproject.toml
 $VersionLine = Select-String -Path "$SciQLopRoot\pyproject.toml" -Pattern '^version\s*=\s*"(.+)"'
