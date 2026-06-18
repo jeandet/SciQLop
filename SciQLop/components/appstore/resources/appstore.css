@@ -19,34 +19,41 @@ body.details-open {
     padding-right: 436px;
 }
 
-/* --- Tab bar --- */
+/* --- Page nav --- */
 
-#tab-bar {
+#page-nav {
     display: flex;
-    gap: 0;
-    border-bottom: 2px solid var(--Borders);
-    margin-bottom: 12px;
+    gap: 4px;
+    margin-bottom: 14px;
 }
 
-.tab {
-    padding: 8px 20px;
+.page-btn {
+    padding: 6px 16px;
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
+    border-radius: 6px;
     color: var(--UnselectedText);
     cursor: pointer;
     font-size: 0.95em;
     font-weight: 500;
 }
 
-.tab:hover {
+.page-btn:hover { color: var(--Text); }
+
+.page-btn.active {
+    background: var(--AlternateBase);
     color: var(--Text);
 }
 
-.tab.active {
-    color: var(--Highlight);
-    border-bottom-color: var(--Highlight);
+#updates-count { font-size: 0.85em; color: var(--Highlight); }
+
+/* --- Empty state --- */
+
+.empty-state {
+    text-align: center;
+    padding: 64px 16px;
+    color: var(--UnselectedText);
+    font-size: 0.95em;
 }
 
 /* --- Toolbar --- */

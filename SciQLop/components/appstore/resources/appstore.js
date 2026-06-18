@@ -3,7 +3,7 @@ var selectedCard = null;
 var allPackages = [];
 var installedVersions = {};
 var activeTags = new Set();
-var activeCategory = "";
+var activePage = "explore";
 var activeSort = "stars";
 var heroTimer = null;
 var heroIndex = 0;
@@ -93,8 +93,6 @@ var TYPE_LABEL = {plugin: "Plugins", workspace: "Workspaces", template: "Templat
 function filterPackages() {
     var query = (document.getElementById("search-input").value || "").toLowerCase();
     return allPackages.filter(function(pkg) {
-        var type = pkg.type || "plugin";
-        if (activeCategory && type !== activeCategory) return false;
         if (activeTags.size > 0) {
             var pkgTags = pkg.tags || [];
             var hasTag = false;
@@ -150,7 +148,7 @@ function renderHero() {
     if (heroTimer) { clearInterval(heroTimer); heroTimer = null; }
     var query = (document.getElementById("search-input").value || "");
     var feat = featuredPackages();
-    if (query || activeCategory || feat.length === 0) { host.innerHTML = ""; return; }
+    if (query || activePage !== "explore" || feat.length === 0) { host.innerHTML = ""; return; }
 
     heroIndex = heroIndex % feat.length;
     drawHero(host, feat);
@@ -200,19 +198,52 @@ function renderCards() {
     var container = document.getElementById("package-cards");
     container.innerHTML = "";
     renderHero();
-    var filtered = filterPackages();
+    updateUpdatesCount();
 
-    // Flat grid while searching or when a single type tab is active; otherwise
-    // group into one section per type.
-    if (query || activeCategory) {
+    if (activePage === "installed") {
         container.className = "cards-grid";
-        appendTiles(container, filtered);
+        appendTiles(container, pageSubset(filterPackages()));
+        emptyStateIfNeeded(container, "No plugins installed yet.");
+        return;
+    }
+    if (activePage === "updates") {
+        container.className = "cards-grid";
+        appendTiles(container, pageSubset(filterPackages()));
+        emptyStateIfNeeded(container, "Everything is up to date.");
+        return;
+    }
+    // explore
+    if (query) {
+        container.className = "cards-grid";
+        appendTiles(container, filterPackages());
         return;
     }
     container.className = "sections";
+    var filtered = filterPackages();
     TYPE_ORDER.forEach(function(type) {
         renderSection(container, type, filtered.filter(function(p) { return (p.type || "plugin") === type; }));
     });
+}
+
+function pageSubset(list) {
+    return list.filter(function(pkg) {
+        var status = installStatus(pkg);
+        if (activePage === "installed") return status !== "not-installed";
+        if (activePage === "updates") return status === "update-available";
+        return true;
+    });
+}
+
+function emptyStateIfNeeded(container, message) {
+    if (container.children.length > 0) return;
+    container.className = "empty-state";
+    container.innerHTML = '<p>' + escapeHtml(message) + '</p>';
+}
+
+function updateUpdatesCount() {
+    var n = allPackages.filter(function(p) { return installStatus(p) === "update-available"; }).length;
+    var el = document.getElementById("updates-count");
+    if (el) el.textContent = n > 0 ? "(" + n + ")" : "";
 }
 
 // --- Tile creation ---
@@ -524,11 +555,12 @@ function selectCard(card) {
 // --- Event listeners ---
 
 document.addEventListener("DOMContentLoaded", function() {
-    document.querySelectorAll(".tab").forEach(function(tab) {
-        tab.addEventListener("click", function() {
-            document.querySelector(".tab.active").classList.remove("active");
-            tab.classList.add("active");
-            activeCategory = tab.dataset.category;
+    document.querySelectorAll(".page-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+            document.querySelector(".page-btn.active").classList.remove("active");
+            btn.classList.add("active");
+            activePage = btn.dataset.page;
+            hideDetails();
             renderCards();
         });
     });
@@ -557,7 +589,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.body.addEventListener("click", function(e) {
-        if (!e.target.closest(".tile, #details-panel, #lightbox, .tag-chip, .tab, #toolbar")) {
+        if (!e.target.closest(".card, .tile, #details-panel, #detail-page, #lightbox, .tag-chip, .page-btn, #toolbar, #hero")) {
             hideDetails();
         }
     });

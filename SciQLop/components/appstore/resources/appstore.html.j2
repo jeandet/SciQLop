@@ -15,12 +15,10 @@
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
-    <div id="tab-bar">
-        <button class="tab active" data-category="">All</button>
-        <button class="tab" data-category="plugin">Plugins</button>
-        <button class="tab" data-category="workspace">Workspaces</button>
-        <button class="tab" data-category="template">Templates</button>
-        <button class="tab" data-category="example">Examples</button>
+    <div id="page-nav">
+        <button class="page-btn active" data-page="explore">Explore</button>
+        <button class="page-btn" data-page="installed">Installed</button>
+        <button class="page-btn" data-page="updates">Updates <span id="updates-count"></span></button>
     </div>
 
     <div id="toolbar">
