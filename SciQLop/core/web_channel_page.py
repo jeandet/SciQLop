@@ -33,8 +33,14 @@ class WebChannelPage(QWidget):
 
         self._view = QWebEngineView(self)
         self._view.page().setWebChannel(self._channel)
-        self._view.settings().setAttribute(
+        settings = self._view.settings()
+        settings.setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        # The page is loaded with a file:// base URL (setHtml below), so its
+        # origin is local; without this, remote plugin card/screenshot images
+        # are blocked and every card falls back to the emoji placeholder.
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
 
         self._load_html()
 
