@@ -7,8 +7,6 @@ var activeSort = "stars";
 var heroTimer = null;
 var heroIndex = 0;
 
-var TYPE_ICONS = {plugin: "\uD83D\uDD0C", workspace: "\uD83D\uDCC1", template: "\uD83D\uDCC4", example: "\uD83D\uDCD6"};
-
 // --- Initialization ---
 
 function init() {
@@ -507,7 +505,7 @@ function onInstallFinished(json_str) {
     if (!btn) return;
     if (result.ok) {
         btn.textContent = "Installed \u2713";
-        btn.className = "install installed";
+        btn.className = "detail-btn installed";
         btn.disabled = true;
         clearInstallError();
     } else {
@@ -525,7 +523,7 @@ function clearInstallError() {
 function showInstallError(message) {
     clearInstallError();
     if (!message) return;
-    var actions = document.querySelector(".details-actions");
+    var actions = document.querySelector(".detail-actions");
     if (!actions) return;
     var box = document.createElement("pre");
     box.id = "install-error";
@@ -602,7 +600,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.body.addEventListener("click", function(e) {
-        if (!e.target.closest(".card, .tile, #details-panel, #detail-page, #lightbox, .tag-chip, .page-btn, #toolbar, #hero")) {
+        if (!e.target.closest(".tile, #detail-page, #lightbox, .tag-chip, .page-btn, #toolbar, #hero")) {
             hideDetails();
         }
     });
