@@ -2,7 +2,9 @@ import pytest
 from pydantic import ValidationError
 from PySide6.QtCore import QObject
 
-from SciQLop.core.graph_context import GraphContext, GraphRichRefs, _is_importable
+from SciQLop.core.graph_context import (
+    GraphContext, GraphRichRefs, _is_importable, attach_data_meta, context_of,
+)
 
 
 def test_speasy_context_minimal():
@@ -58,6 +60,55 @@ def test_graph_rich_refs_defaults_none():
     refs = GraphRichRefs()
     assert refs.callback is None
     assert refs.knobs_model is None
+
+
+def test_data_meta_defaults_empty_and_round_trips():
+    ctx = GraphContext(
+        kind="speasy", graph_id="g", panel_name="P", plot_index=0,
+        graph_type="Line", speasy_id="amda/imf", provider_name="Speasy",
+    )
+    assert ctx.data_meta == {}
+    ctx.data_meta = {"UNITS": "nT", "FILLVAL": -1e31, "_depend_1": {"UNITS": "Hz"}}
+    assert GraphContext.model_validate(ctx.to_meta_data()) == ctx
+
+
+class _DictMetaGraph(QObject):
+    """Graph stub backed by a QVariantMap-like meta_data slot."""
+    def __init__(self, name):
+        super().__init__()
+        self.setObjectName(name)
+        self._md = {}
+
+    def meta_data(self):
+        return dict(self._md)
+
+    def set_meta_data(self, d):
+        self._md = dict(d)
+
+
+def test_attach_data_meta_merges_without_clobbering_context(qtbot):
+    g = _DictMetaGraph("g_dm")
+    ctx = GraphContext(
+        kind="speasy", graph_id="g_dm", panel_name="P", plot_index=2,
+        graph_type="Line", speasy_id="amda/imf", provider_name="Speasy",
+        knobs={"k": 1},
+    )
+    g.set_meta_data(ctx.to_meta_data())
+
+    attach_data_meta(g, {"UNITS": "nT", "CATDESC": "B field"})
+
+    back = context_of(g)
+    assert back.data_meta == {"UNITS": "nT", "CATDESC": "B field"}
+    # original identity fields survive the merge
+    assert back.speasy_id == "amda/imf"
+    assert back.plot_index == 2
+    assert back.knobs == {"k": 1}
+
+
+def test_attach_data_meta_noop_without_context(qtbot):
+    g = _DictMetaGraph("g_noctx")
+    attach_data_meta(g, {"UNITS": "nT"})  # no context attached yet
+    assert g.meta_data() == {}
 
 
 def _module_level_function():

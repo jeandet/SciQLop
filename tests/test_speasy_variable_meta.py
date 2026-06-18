@@ -83,3 +83,50 @@ def test_depend_1_meta_wins_over_axis_attrs():
 def test_no_depend_1_when_single_axis():
     v = _var(axes=[_axis(name="time", unit="ns")])
     assert "_depend_1" not in _variable_as_istp_meta(v)
+
+
+def test_jsonable_meta_converts_numpy_scalars_and_arrays():
+    import numpy as np
+    from SciQLop.core.speasy_hints import jsonable_meta
+
+    out = jsonable_meta({
+        "FILLVAL": np.float64(-1e31),
+        "VALIDMIN": np.int32(3),
+        "LABL_PTR_1": np.array(["bx", "by", "bz"]),
+        "_depend_1": {"UNITS": np.str_("Hz"), "EDGES": np.array([1.0, 2.0])},
+    })
+    assert out["FILLVAL"] == -1e31 and isinstance(out["FILLVAL"], float)
+    assert out["VALIDMIN"] == 3 and isinstance(out["VALIDMIN"], int)
+    assert out["LABL_PTR_1"] == ["bx", "by", "bz"]
+    assert out["_depend_1"]["UNITS"] == "Hz" and isinstance(out["_depend_1"]["UNITS"], str)
+    assert out["_depend_1"]["EDGES"] == [1.0, 2.0]
+
+
+def test_jsonable_meta_caps_long_sequences():
+    import numpy as np
+    from SciQLop.core.speasy_hints import jsonable_meta
+
+    out = jsonable_meta({"BIG": np.arange(1000)})
+    assert len(out["BIG"]) <= 257  # capped + sentinel
+    assert isinstance(out["BIG"][-1], str) and "more" in out["BIG"][-1]
+
+
+def test_jsonable_meta_is_qvariant_round_trippable(qtbot):
+    """The sanitized dict must survive a real QVariantMap round-trip via the
+    graph meta_data slot (Shiboken dict↔QVariantMap), since that's where it
+    lands in production."""
+    import numpy as np
+    from SciQLop.core.speasy_hints import jsonable_meta
+    from SciQLopPlots import SciQLopPlot
+
+    plot = SciQLopPlot()
+    qtbot.addWidget(plot)
+    g = plot.plot(np.array([0.0, 1.0, 2.0]), np.array([0.0, 1.0, 2.0]))
+    graph = g[1] if hasattr(g, "__iter__") else g
+    payload = jsonable_meta({"UNITS": np.str_("nT"), "FILLVAL": np.float64(-1e31),
+                             "LABL_PTR_1": np.array(["bx", "by"])})
+    graph.set_meta_data({"kind": "speasy", "data_meta": payload})
+    back = graph.meta_data()["data_meta"]
+    assert back["UNITS"] == "nT"
+    assert back["FILLVAL"] == -1e31
+    assert list(back["LABL_PTR_1"]) == ["bx", "by"]

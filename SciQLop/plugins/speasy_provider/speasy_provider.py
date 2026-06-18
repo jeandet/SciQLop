@@ -15,7 +15,7 @@ from SciQLop.components.plotting.backend.data_provider import DataProvider, Data
 from SciQLop.core import tracing
 from SciQLop.core.plot_hints import PlotHints
 from SciQLop.core.istp_hints import istp_metadata_to_hints
-from SciQLop.core.speasy_hints import variable_as_istp_meta
+from SciQLop.core.speasy_hints import variable_as_istp_meta, jsonable_meta
 from SciQLop import __version__ as sciqlop_version
 from SciQLopPlots import ProductsModel, ProductsModelNode, ProductsModelNodeType
 
@@ -425,6 +425,14 @@ class SpeasyPlugin(DataProvider):
             log.debug("plot_hints_from_variable failed for %s", node, exc_info=True)
             return PlotHints()
 
+    def data_meta_from_variable(self, node: ProductsModelNode,
+                                variable: SpeasyVariable) -> dict:
+        try:
+            return jsonable_meta(variable_as_istp_meta(variable))
+        except Exception:
+            log.debug("data_meta_from_variable failed for %s", node, exc_info=True)
+            return {}
+
     def python_snippets(self, ctx, graph=None) -> dict:
         if ctx.kind != "speasy" or not ctx.speasy_id:
             return {}
@@ -437,14 +445,16 @@ class SpeasyPlugin(DataProvider):
         if ctx.kind != "speasy" or not ctx.speasy_id:
             return {}
         index = self._resolve_index(ctx.speasy_id)
-        if index is None:
+        if index is None and not ctx.data_meta:
             return {}
-        return {
-            "speasy_id": ctx.speasy_id,
-            "inventory": _index_to_dict(index),
-            "parameter_type": (str(getattr(index, "parameter_type", ""))
-                                or None),
-        }
+        payload = {"speasy_id": ctx.speasy_id}
+        if index is not None:
+            payload["inventory"] = _index_to_dict(index)
+            payload["parameter_type"] = (str(getattr(index, "parameter_type", ""))
+                                          or None)
+        if ctx.data_meta:
+            payload["data"] = ctx.data_meta
+        return payload
 
 
 def load(*args):

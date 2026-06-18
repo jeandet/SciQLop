@@ -127,6 +127,37 @@ def test_speasy_extended_metadata_known_id():
     assert "inventory" in out
 
 
+def test_speasy_extended_metadata_merges_data_stream_meta():
+    """data_meta captured post-fetch surfaces under 'data', alongside inventory."""
+    from SciQLop.plugins.speasy_provider.speasy_provider import SpeasyPlugin
+    p = SpeasyPlugin.__new__(SpeasyPlugin)
+    p._name = "Speasy"
+    ctx = GraphContext(kind="speasy", graph_id="g", panel_name="P",
+                       plot_index=0, graph_type="Line",
+                       speasy_id="amda/imf", provider_name="Speasy",
+                       data_meta={"UNITS": "nT", "FILLVAL": -1e31})
+    fake_index = MagicMock()
+    fake_index.parameter_type = "Vector"
+    with patch.object(p, "_resolve_index", return_value=fake_index):
+        out = p.extended_metadata(ctx)
+    assert out["data"] == {"UNITS": "nT", "FILLVAL": -1e31}
+    assert "inventory" in out
+
+
+def test_speasy_extended_metadata_data_meta_without_inventory():
+    """Even when inventory resolution fails, captured data_meta is still shown."""
+    from SciQLop.plugins.speasy_provider.speasy_provider import SpeasyPlugin
+    p = SpeasyPlugin.__new__(SpeasyPlugin)
+    p._name = "Speasy"
+    ctx = GraphContext(kind="speasy", graph_id="g", panel_name="P",
+                       plot_index=0, graph_type="Line",
+                       speasy_id="bogus/id", provider_name="Speasy",
+                       data_meta={"UNITS": "nT"})
+    with patch.object(p, "_resolve_index", return_value=None):
+        out = p.extended_metadata(ctx)
+    assert out == {"speasy_id": "bogus/id", "data": {"UNITS": "nT"}}
+
+
 # Module-level callback for the importable case
 def _tested_module_level_vp_callback(start, stop, knobs=None):
     return None

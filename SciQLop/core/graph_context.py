@@ -36,6 +36,10 @@ class GraphContext(BaseModel):
 
     provider_name: Optional[str] = None
     knobs: dict[str, Any] = Field(default_factory=dict)
+    # Provider-supplied metadata read off the first fetched data stream
+    # (e.g. ISTP attrs of a SpeasyVariable). Empty until the first successful
+    # fetch fills it via attach_data_meta — see _PostFetchHintsApplier.
+    data_meta: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"extra": "forbid"}
 
@@ -136,6 +140,24 @@ def update_knobs(graph, knobs: dict) -> None:
         graph.set_meta_data(ctx.to_meta_data())
     except Exception:
         log.debug("update_knobs set_meta_data failed", exc_info=True)
+
+
+def attach_data_meta(graph, data_meta: dict) -> None:
+    """Merge data-stream metadata into a graph's context meta_data slot.
+
+    Mirrors update_knobs: read-modify-write the lean envelope. No-op if the
+    graph has no context attached. Must run on the main thread — the QVariantMap
+    slot is read there by the inspector (see _PostFetchHintsApplier for the
+    worker→main marshaling).
+    """
+    ctx = context_of(graph)
+    if ctx is None:
+        return
+    ctx.data_meta = dict(data_meta)
+    try:
+        graph.set_meta_data(ctx.to_meta_data())
+    except Exception:
+        log.debug("attach_data_meta set_meta_data failed", exc_info=True)
 
 
 def build_speasy_ctx(graph, *, panel_name: str, plot_index: int,

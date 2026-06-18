@@ -13,6 +13,42 @@ import math
 from typing import Any, Dict
 
 
+_SEQ_CAP = 256  # keep huge depend/edge arrays from bloating the meta_data slot
+
+
+def jsonable_meta(obj: Any, _depth: int = 0) -> Any:
+    """Recursively convert a meta dict into JSON/QVariant-friendly primitives.
+
+    numpy scalars → python scalars, numpy/array-likes → lists (capped), dicts
+    and lists recurse; anything else falls back to repr. Duck-typed so this
+    module keeps its no-numpy, no-Qt import contract.
+    """
+    if _depth > 6:
+        return repr(obj)
+    # numpy scalars first: np.float64/np.str_ are float/str subclasses and would
+    # otherwise short-circuit the primitive check below, leaking numpy types.
+    if getattr(obj, "ndim", None) == 0 and hasattr(obj, "item"):
+        try:
+            return jsonable_meta(obj.item(), _depth + 1)
+        except Exception:
+            return repr(obj)
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if hasattr(obj, "tolist") and not isinstance(obj, (str, bytes)):
+        try:
+            return jsonable_meta(obj.tolist(), _depth + 1)
+        except Exception:
+            return repr(obj)
+    if isinstance(obj, dict):
+        return {str(k): jsonable_meta(v, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        items = [jsonable_meta(v, _depth + 1) for v in obj[:_SEQ_CAP]]
+        if len(obj) > _SEQ_CAP:
+            items.append(f"... (+{len(obj) - _SEQ_CAP} more)")
+        return items
+    return repr(obj)
+
+
 def _first_scalar(value: Any) -> Any:
     while hasattr(value, "__len__") and not isinstance(value, str):
         try:

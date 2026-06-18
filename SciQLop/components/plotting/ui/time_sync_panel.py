@@ -16,10 +16,11 @@ from SciQLop.components import sciqlop_logging
 from SciQLop.components.plotting.backend.data_provider import providers, DataProvider
 from SciQLop.components.plotting.backend.easy_provider import EasyProvider
 from SciQLop.core.graph_context import (
-    attach_context, build_speasy_ctx, build_vp_ctx,
+    attach_context, attach_data_meta, build_speasy_ctx, build_vp_ctx,
     build_static_ctx, build_function_ctx, GraphRichRefs,
     update_knobs,
 )
+from SciQLop.user_api.threading import on_main_thread
 import weakref
 
 from SciQLop.core.plot_hints import apply_plot_hints, combine_hints, merge_hints, PlotHints
@@ -94,6 +95,26 @@ class _PlotHintsRegistry:
             self._entries[key] = hints
             self._recompute()
 
+    def graph_for_key(self, key: int):
+        """Re-resolve the live graph for a C++-pointer key on this plot.
+
+        Shiboken doesn't preserve wrapper identity, so we never hold a graph
+        ref across the async fetch — we look it up fresh by C++ pointer. Returns
+        None if the plot or graph is gone."""
+        if not shiboken6.isValid(self._plot):
+            return None
+        try:
+            candidates = self._plot.plottables()
+        except (AttributeError, RuntimeError):
+            return None
+        for g in candidates:
+            try:
+                if _graph_key(g) == key and shiboken6.isValid(g):
+                    return g
+            except (RuntimeError, ValueError):
+                continue
+        return None
+
     def _drop(self, key: int) -> None:
         if self._entries.pop(key, None) is not None:
             self._schedule_recompute()
@@ -164,14 +185,38 @@ class _PostFetchHintsApplier:
         if reg is None:
             self._applied = True
             return
+        self._apply_hints(reg, variable)
+        self._stash_data_meta(reg, variable)
+        self._applied = True
+
+    def _apply_hints(self, reg, variable) -> None:
         try:
             extra = self._provider.plot_hints_from_variable(self._node, variable)
         except Exception:
             log.debug("plot_hints_from_variable failed for %s", self._node, exc_info=True)
-            self._applied = True
             return
         reg.update_if_present(self._graph_key, merge_hints(self._base_hints, extra))
-        self._applied = True
+
+    def _stash_data_meta(self, reg, variable) -> None:
+        """Capture the variable's stream metadata (worker thread) and write it
+        onto the graph's context (main thread, graph re-resolved by pointer)."""
+        extract = getattr(self._provider, "data_meta_from_variable", None)
+        if extract is None:
+            return
+        try:
+            data_meta = extract(self._node, variable)
+        except Exception:
+            log.debug("data_meta_from_variable failed for %s", self._node, exc_info=True)
+            return
+        if not data_meta:
+            return
+        on_main_thread(self._write_data_meta)(reg, self._graph_key, data_meta)
+
+    @staticmethod
+    def _write_data_meta(reg, graph_key: int, data_meta: dict) -> None:
+        graph = reg.graph_for_key(graph_key)
+        if graph is not None:
+            attach_data_meta(graph, data_meta)
 
 
 class _ProductCallbackBase:
@@ -474,13 +519,25 @@ def _attach_graph_context(r, provider, node, target):
     context than mislabel one.
     """
     try:
-        plot, graph = r
-        panel_name = target.windowTitle() if hasattr(target, "windowTitle") else ""
-        plots = target.plots() if hasattr(target, "plots") else []
+        # `r` is either (plot, graph) (panel target) or a bare graph (single
+        # SciQLopPlot target, e.g. drag-drop — see SciQLopMultiPlotPanel::
+        # dropEvent). Resolve both shapes like the sibling _post_plot helpers,
+        # otherwise context silently never attaches for dropped graphs.
+        graph = _graph_from_result(r)
+        plot = _plot_from_result(r, target)
+        if graph is None or plot is None:
+            log.debug("graph_context: could not resolve plot/graph from result "
+                      "— skipping attach")
+            return
+        from SciQLop.user_api.layers._renderer import _find_panel
+        panel = target if isinstance(target, SciQLopMultiPlotPanel) \
+            else _find_panel(plot)
+        panel_name = panel.windowTitle() if panel is not None else ""
+        plots = panel.plots() if panel is not None else []
         plot_index = next((i for i, p in enumerate(plots)
                            if p.objectName() == plot.objectName()), -1)
         if plot_index == -1:
-            log.debug("graph_context: plot %r not in target.plots() — using -1",
+            log.debug("graph_context: plot %r not in panel.plots() — using -1",
                       plot.objectName())
         graph_type = type(graph).__name__
         knobs = {}

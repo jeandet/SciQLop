@@ -110,6 +110,16 @@ class DataProvider:
         """
         return PlotHints()
 
+    def data_meta_from_variable(self, node, variable) -> dict:
+        """Return JSON-friendly metadata read off a fetched data variable.
+
+        Called at most once per plot, after the first successful fetch, to
+        enrich the graph's context with stream-level metadata (the inventory
+        only knows what it advertises). Defaults to none. Implementations must
+        return QVariant/JSON-friendly values (see speasy_hints.jsonable_meta).
+        """
+        return {}
+
     def get_knobs(self, product) -> list:
         """Return a list of KnobSpec for this product (empty = not parameterized)."""
         return []

@@ -63,6 +63,125 @@ def test_post_plot_invokes_attach_context_for_speasy(qtbot, monkeypatch):
     assert captured["ctx"].provider_name == "Speasy"
 
 
+def test_post_plot_attaches_context_for_bare_graph_drop_target(qtbot, monkeypatch):
+    """Drag-drop onto a plot calls plot_product with a single SciQLopPlot as
+    the target (see SciQLopMultiPlotPanel::dropEvent), so target.plot() returns
+    a *bare graph* (not a tuple) and existing_plot is None.
+
+    Regression: _attach_graph_context used `plot, graph = r`, which raises on a
+    bare graph and was swallowed by its surrounding try/except — so dropped
+    graphs got no speasy context (no metadata in the inspector), while the
+    python panel path (tuple result) worked.
+    """
+    from SciQLop.components.plotting.ui import time_sync_panel as tsp
+    from SciQLopPlots import SciQLopPlot
+    from PySide6.QtCore import QObject
+
+    captured = {}
+    monkeypatch.setattr(tsp, "attach_context",
+                        lambda g, ctx, rich=None: captured.update(ctx=ctx))
+    monkeypatch.setattr(tsp, "_set_product_path", lambda *a, **kw: None)
+    monkeypatch.setattr(tsp, "_register_graph_hints", lambda *a, **kw: None)
+    monkeypatch.setattr(tsp, "_attach_knob_state", lambda *a, **kw: None)
+
+    class _FakeNode:
+        def name(self): return "imf"
+        def metadata(self, key=None):
+            return "amda/imf" if key == "speasy_id" else {}
+
+    class _FakeProvider:
+        name = "Speasy"
+
+    class _FakeGraph(QObject):
+        def __init__(self):
+            super().__init__()
+            self.setObjectName("g_drop")
+
+    plot = SciQLopPlot()
+    qtbot.addWidget(plot)
+    graph = _FakeGraph()
+    callback = type("C", (), {"_post_fetch": None})()
+    # bare graph + existing_plot=None: the drag-drop-onto-a-plot shape
+    tsp._post_plot(graph, _FakeProvider(), _FakeNode(), callback, plot,
+                   "amda//imf", existing_plot=None)
+
+    assert "ctx" in captured, "no context attached for bare-graph drop target"
+    assert captured["ctx"].kind == "speasy"
+    assert captured["ctx"].speasy_id == "amda/imf"
+
+
+def test_observe_writes_data_meta_to_graph_context(qtbot):
+    """On the first successful fetch, _PostFetchHintsApplier.observe must stash
+    the provider's data-stream metadata into the graph's GraphContext, resolved
+    by C++ pointer through the registry — so the inspector's 'Show full
+    metadata…' dialog (which re-reads extended_metadata) surfaces it.
+    """
+    import numpy as np
+    from types import SimpleNamespace
+    from SciQLop.components.plotting.ui import time_sync_panel as tsp
+    from SciQLop.core.graph_context import (
+        build_speasy_ctx, attach_context, context_of,
+    )
+    from SciQLop.core.plot_hints import PlotHints
+    from SciQLopPlots import SciQLopPlot
+
+    plot = SciQLopPlot()
+    qtbot.addWidget(plot)
+    g = plot.plot(np.array([0.0, 1.0, 2.0]), np.array([0.0, 1.0, 2.0]))
+    graph = g[1] if hasattr(g, "__iter__") else g
+    ctx = build_speasy_ctx(graph, panel_name="P", plot_index=0,
+                           speasy_id="amda/imf", graph_type="Line")
+    attach_context(graph, ctx)
+
+    class _Prov:
+        name = "Speasy"
+        def plot_hints(self, node): return PlotHints()
+        def plot_hints_from_variable(self, node, variable): return PlotHints()
+        def data_meta_from_variable(self, node, variable):
+            return {"UNITS": "nT", "CATDESC": "B field"}
+
+    node = SimpleNamespace(name=lambda: "imf")
+    applier = tsp._register_graph_hints(_Prov(), node, graph, plot)
+    assert applier is not None
+
+    applier.observe(object())  # a non-empty/"successful" variable
+
+    assert context_of(graph).data_meta == {"UNITS": "nT", "CATDESC": "B field"}
+
+
+def test_observe_without_data_meta_method_leaves_context_empty(qtbot):
+    """Providers that don't implement data_meta_from_variable (the default
+    DataProvider) must not break observe nor populate data_meta."""
+    import numpy as np
+    from types import SimpleNamespace
+    from SciQLop.components.plotting.ui import time_sync_panel as tsp
+    from SciQLop.core.graph_context import (
+        build_speasy_ctx, attach_context, context_of,
+    )
+    from SciQLop.core.plot_hints import PlotHints
+    from SciQLopPlots import SciQLopPlot
+
+    plot = SciQLopPlot()
+    qtbot.addWidget(plot)
+    g = plot.plot(np.array([0.0, 1.0, 2.0]), np.array([0.0, 1.0, 2.0]))
+    graph = g[1] if hasattr(g, "__iter__") else g
+    attach_context(graph, build_speasy_ctx(
+        graph, panel_name="P", plot_index=0, speasy_id="amda/imf",
+        graph_type="Line"))
+
+    class _Prov:
+        name = "Speasy"
+        def plot_hints(self, node): return PlotHints()
+        def plot_hints_from_variable(self, node, variable): return PlotHints()
+        # no data_meta_from_variable
+
+    node = SimpleNamespace(name=lambda: "imf")
+    applier = tsp._register_graph_hints(_Prov(), node, graph, plot)
+    applier.observe(object())
+
+    assert context_of(graph).data_meta == {}
+
+
 def test_post_plot_invokes_attach_context_for_vp(qtbot, monkeypatch):
     """When _post_plot runs on an EasyProvider (VP), attach_context is
     called with kind='vp' and rich refs containing the callback."""
