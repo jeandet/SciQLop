@@ -85,39 +85,68 @@ function latestVersion(pkg) {
     return versions.length > 0 ? versions[versions.length - 1] : null;
 }
 
-function renderCards() {
-    var query = (document.getElementById("search-input").value || "").toLowerCase();
-    var container = document.getElementById("package-cards");
-    container.innerHTML = "";
+var TYPE_ORDER = ["plugin", "workspace", "template", "example"];
+var TYPE_LABEL = {plugin: "Plugins", workspace: "Workspaces", template: "Templates", example: "Examples"};
 
-    var filtered = allPackages.filter(function(pkg) {
+function filterPackages() {
+    var query = (document.getElementById("search-input").value || "").toLowerCase();
+    return allPackages.filter(function(pkg) {
         var type = pkg.type || "plugin";
         if (activeCategory && type !== activeCategory) return false;
-
         if (activeTags.size > 0) {
             var pkgTags = pkg.tags || [];
             var hasTag = false;
-            activeTags.forEach(function(t) {
-                if (pkgTags.indexOf(t) !== -1) hasTag = true;
-            });
+            activeTags.forEach(function(t) { if (pkgTags.indexOf(t) !== -1) hasTag = true; });
             if (!hasTag) return false;
         }
-
         if (query) {
             var text = (pkg.name + " " + pkg.description + " " + (pkg.tags || []).join(" ")).toLowerCase();
             if (text.indexOf(query) === -1) return false;
         }
-
         return true;
     });
+}
 
-    filtered.sort(function(a, b) {
+function sortPackages(list) {
+    return list.slice().sort(function(a, b) {
         if (activeSort === "stars") return (b.stars || 0) - (a.stars || 0);
         return a.name.localeCompare(b.name);
     });
+}
 
-    filtered.forEach(function(pkg) {
-        container.appendChild(createTile(pkg));
+function appendTiles(container, list) {
+    sortPackages(list).forEach(function(pkg) { container.appendChild(createTile(pkg)); });
+}
+
+function renderSection(container, type, list) {
+    if (list.length === 0) return;
+    var head = document.createElement("div");
+    head.className = "section-h";
+    head.innerHTML = '<h4>' + escapeHtml(TYPE_LABEL[type] || type) + '</h4>' +
+        '<span>' + list.length + ' available</span>';
+    container.appendChild(head);
+    var grid = document.createElement("div");
+    grid.className = "cards-grid";
+    appendTiles(grid, list);
+    container.appendChild(grid);
+}
+
+function renderCards() {
+    var query = (document.getElementById("search-input").value || "").toLowerCase();
+    var container = document.getElementById("package-cards");
+    container.innerHTML = "";
+    var filtered = filterPackages();
+
+    // Flat grid while searching or when a single type tab is active; otherwise
+    // group into one section per type.
+    if (query || activeCategory) {
+        container.className = "cards-grid";
+        appendTiles(container, filtered);
+        return;
+    }
+    container.className = "sections";
+    TYPE_ORDER.forEach(function(type) {
+        renderSection(container, type, filtered.filter(function(p) { return (p.type || "plugin") === type; }));
     });
 }
 
