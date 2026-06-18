@@ -185,6 +185,11 @@ function drawHero(host, feat) {
 
 function renderCards() {
     var query = (document.getElementById("search-input").value || "").toLowerCase();
+    var flat = activePage !== "explore" || !!query;
+    var sortSel = document.getElementById("sort-select");
+    var chips = document.getElementById("tag-chips");
+    if (sortSel) sortSel.style.display = flat ? "" : "none";
+    if (chips) chips.style.display = flat ? "" : "none";
     var container = document.getElementById("package-cards");
     container.innerHTML = "";
     renderHero();
@@ -213,6 +218,7 @@ function renderCards() {
     TYPE_ORDER.forEach(function(type) {
         renderSection(container, type, filtered.filter(function(p) { return (p.type || "plugin") === type; }));
     });
+    emptyStateIfNeeded(container, "No plugins available.");
 }
 
 function pageSubset(list) {
@@ -376,6 +382,7 @@ function initCarousel(root) {
 // --- Detail page ---
 
 var detailReturnScroll = 0;
+var currentDetailPkg = null;
 
 function detailThumbsHtml(urls) {
     if (urls.length < 2) return "";
@@ -406,6 +413,7 @@ function detailActionsHtml(pkg, status, latest) {
 }
 
 function showPackageDetails(pkg) {
+    currentDetailPkg = pkg;
     var type = pkg.type || "plugin";
     var latest = latestVersion(pkg);
     var versionStr = latest ? latest.version : "\u2014";
@@ -468,14 +476,21 @@ function wireDetailActions() {
     }
 }
 
+function refreshDetailActions() {
+    if (!currentDetailPkg) return;
+    var actions = document.querySelector(".detail-actions");
+    if (!actions) return;
+    actions.innerHTML = detailActionsHtml(currentDetailPkg, installStatus(currentDetailPkg), latestVersion(currentDetailPkg));
+    wireDetailActions();
+}
+
 function initDetailThumbs() {
     var root = document.getElementById("detail-content");
     var thumbs = root.querySelectorAll(".detail-thumb");
-    var slides = root.querySelectorAll(".carousel-slide");
     thumbs.forEach(function(thumb) {
         thumb.addEventListener("click", function() {
             var i = parseInt(thumb.dataset.i, 10);
-            slides.forEach(function(s, idx) { s.classList.toggle("active", idx === i); });
+            root.querySelectorAll(".carousel-slide").forEach(function(s, idx) { s.classList.toggle("active", idx === i); });
             root.querySelectorAll(".carousel-dot").forEach(function(d, idx) { d.classList.toggle("active", idx === i); });
             thumbs.forEach(function(t, idx) { t.classList.toggle("on", idx === i); });
         });
@@ -490,6 +505,7 @@ function openDetailPage() {
 }
 
 function hideDetails() {
+    currentDetailPkg = null;
     document.getElementById("detail-page").classList.add("hidden");
     document.body.classList.remove("detail-open");
     window.scrollTo(0, detailReturnScroll);
@@ -501,18 +517,16 @@ function onInstallFinished(json_str) {
         installedVersions[result.name] = result.version;
     }
     renderCards();
+    if (result.ok) {
+        clearInstallError();
+        refreshDetailActions();
+        return;
+    }
     var btn = document.getElementById("install-btn");
     if (!btn) return;
-    if (result.ok) {
-        btn.textContent = "Installed \u2713";
-        btn.className = "detail-btn installed";
-        btn.disabled = true;
-        clearInstallError();
-    } else {
-        btn.textContent = "Failed";
-        btn.disabled = false;
-        showInstallError(result.error);
-    }
+    btn.textContent = "Failed";
+    btn.disabled = false;
+    showInstallError(result.error);
 }
 
 function clearInstallError() {
@@ -538,17 +552,16 @@ function onUninstallFinished(json_str) {
         delete installedVersions[result.name];
     }
     renderCards();
+    if (result.ok) {
+        clearInstallError();
+        refreshDetailActions();
+        return;
+    }
     var unBtn = document.getElementById("uninstall-btn");
     if (!unBtn) return;
-    if (result.ok) {
-        unBtn.textContent = "Uninstalled";
-        unBtn.disabled = true;
-        clearInstallError();
-    } else {
-        unBtn.textContent = "Failed";
-        unBtn.disabled = false;
-        showInstallError(result.error);
-    }
+    unBtn.textContent = "Failed";
+    unBtn.disabled = false;
+    showInstallError(result.error);
 }
 
 function openLightbox(src) {
@@ -573,6 +586,7 @@ document.addEventListener("DOMContentLoaded", function() {
             activePage = btn.dataset.page;
             hideDetails();
             renderCards();
+            window.scrollTo(0, 0);
         });
     });
 
