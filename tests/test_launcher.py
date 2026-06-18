@@ -296,3 +296,35 @@ def test_resolve_sciqlop_file_overrides_reopen(tmp_path):
     with _settings_module(root, reopen=True):
         d = resolve_workspace_dir(workspace_name=None, sciqlop_file=str(ws_file))
     assert d == ws_file.parent
+
+
+# --- _prepare_workspace_dev: host-provided (SciQLop) filtering ---
+def test_prepare_workspace_dev_strips_host_sciqlop_from_install(tmp_path):
+    """A plugin declaring SciQLop>=0.13.0 must install against a 0.13.0.dev0
+    host. The dev pip-install path must drop SciQLop itself (provided by the
+    host via --system-site-packages); otherwise uv resolves it from PyPI, finds
+    only <=0.12.0, and the whole plugin/workspace install fails."""
+    from SciQLop.sciqlop_launcher import _prepare_workspace_dev
+    from SciQLop.components.workspaces.backend.workspace_project import (
+        _extract_package_name,
+    )
+
+    captured = {}
+
+    def fake_run_uv(cmd, on_output=None, **kw):
+        captured["cmd"] = cmd
+
+    with patch("SciQLop.components.plugins.plugin_deps.collect_plugin_dependencies",
+               return_value=["SciQLop>=0.13.0,<0.14.0", "matplotlib>=3.8"]), \
+         patch("SciQLop.components.workspaces.backend.workspace_setup.get_globally_enabled_plugins",
+               return_value=[]), \
+         patch("SciQLop.components.workspaces.backend.workspace_setup.get_plugin_folders",
+               return_value=[]), \
+         patch("SciQLop.components.workspaces.backend.workspace_migration.migrate_workspace"), \
+         patch("SciQLop.components.workspaces.backend.workspace_venv._run_uv", fake_run_uv):
+        _prepare_workspace_dev(tmp_path)
+
+    cmd = captured["cmd"]
+    install_args = cmd[cmd.index("install") + 1:]
+    assert not any(_extract_package_name(p) == "sciqlop" for p in install_args), cmd
+    assert "matplotlib>=3.8" in install_args

@@ -92,6 +92,34 @@ def _discover_entry_point_plugins() -> dict[str, importlib.metadata.EntryPoint]:
     return {ep.name: ep for ep in importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)}
 
 
+def plugin_host_compatible(folder: str, plugin: str) -> bool:
+    """Backstop gate: refuse to load a folder plugin whose declared SciQLop
+    requirement the running host doesn't satisfy.
+
+    The app store already gates install/update, but a plugin can be sideloaded
+    or the host can change under an installed plugin — without this gate an
+    incompatible plugin's ``load()`` would still run against the wrong host API.
+    Missing plugin.json or no SciQLop requirement means no claim → compatible.
+    """
+    from .plugin_desc import PluginDesc
+    from SciQLop.components.plugins.compat import (
+        plugin_is_compatible, sciqlop_specifier, host_version,
+    )
+    path = os.path.join(folder, plugin, "plugin.json")
+    if not os.path.isfile(path):
+        return True
+    try:
+        desc = PluginDesc.from_json(path)
+    except Exception:
+        return True  # malformed desc is reported on the registration path
+    if plugin_is_compatible(desc.python_dependencies):
+        return True
+    log.warning(
+        "Skipping plugin %r: requires SciQLop %s but host is %s",
+        plugin, sciqlop_specifier(desc.python_dependencies) or "(any)", host_version())
+    return False
+
+
 def _load_entry_point_plugin(ep: importlib.metadata.EntryPoint, main_window):
     try:
         mod = ep.load()
@@ -127,7 +155,7 @@ def load_all(main_window):
                         log.info(f"Plugin {plugin} is disabled by default")
                         settings.plugins[plugin].enabled = False
                         continue
-                if settings.plugins[plugin].enabled:
+                if settings.plugins[plugin].enabled and plugin_host_compatible(folder, plugin):
                     plugin_list.append((folder, plugin))
 
         for name, ep in ep_plugins.items():

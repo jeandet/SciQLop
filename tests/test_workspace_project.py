@@ -294,6 +294,18 @@ class TestGeneratePyprojectToml:
             sciqlop_override = next(o for o in overrides if o.startswith("sciqlop "))
             assert "python_version < '0'" in sciqlop_override
 
+    def test_strip_host_provided_drops_sciqlop_keeps_rest(self):
+        """The shared filter drops SciQLop (any specifier form) and keeps
+        everything else, so both the uv-sync and dev pip-install paths agree."""
+        from SciQLop.components.workspaces.backend.workspace_project import (
+            strip_host_provided,
+        )
+        kept = strip_host_provided([
+            "SciQLop>=0.13.0,<0.14.0", "matplotlib>=3.8",
+            "sciqlop>=0.12.0", "numpy", "SciQLop",
+        ])
+        assert kept == ["matplotlib>=3.8", "numpy"]
+
     def test_host_provided_overrides_cover_every_host_package(self):
         from SciQLop.components.workspaces.backend.workspace_project import (
             _HOST_PROVIDED_PACKAGES,

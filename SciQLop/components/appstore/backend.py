@@ -10,12 +10,11 @@ import urllib.request
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-import packaging.specifiers
 import packaging.version
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-import SciQLop
+from SciQLop.components.plugins.compat import host_satisfies
 from SciQLop.components.sciqlop_logging import getLogger
 from SciQLop.components.workspaces.backend.uv import uv_command
 from SciQLop.components.workspaces.backend.workspace_project import (
@@ -28,7 +27,6 @@ log = getLogger(__name__)
 DEFAULT_STORE_URL = "https://sciqlop.github.io/sciqlop-appstore/index.json"
 
 _PEP440_SPLIT = re.compile(r"[><=!~;@\s]")
-_SCIQLOP_VERSION = packaging.version.parse(SciQLop.__version__)
 
 
 def _fetch_index(url: str) -> list[dict]:
@@ -38,14 +36,13 @@ def _fetch_index(url: str) -> list[dict]:
 
 
 def _is_compatible(version_entry: dict) -> bool:
-    """True if `version_entry["sciqlop"]` is missing/empty or matches our version."""
-    spec = (version_entry.get("sciqlop") or "").strip()
-    if not spec:
-        return True
-    try:
-        return _SCIQLOP_VERSION in packaging.specifiers.SpecifierSet(spec, prereleases=True)
-    except packaging.specifiers.InvalidSpecifier:
-        return True
+    """True if `version_entry["sciqlop"]` is missing/empty or matches our version.
+
+    Delegates to the shared, dev-build-aware rule so a 0.13.0.dev0 host is
+    treated as 0.13.0 — the store must not hide the plugin built for the very
+    release the user is running. See components/plugins/compat.py.
+    """
+    return host_satisfies(version_entry.get("sciqlop") or "")
 
 
 def _compatible_versions(plugin: dict) -> list[dict]:

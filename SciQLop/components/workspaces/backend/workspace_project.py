@@ -130,6 +130,26 @@ def _extract_package_name(req: str) -> str:
     return m.group(1).lower().replace("_", "-").replace(".", "-")
 
 
+def strip_host_provided(reqs: Sequence[str]) -> List[str]:
+    """Drop requirements for packages the running SciQLop install provides.
+
+    The workspace venv inherits them via ``--system-site-packages``. Re-resolving
+    them from an index is both wrong (it would shadow the running host package)
+    and broken for dev builds: a ``0.13.0.dev0`` host does not satisfy a plugin's
+    ``SciQLop>=0.13.0`` under PEP 440, so uv falls back to PyPI — which only has
+    ``<=0.12.0`` — and the whole install fails. See _HOST_PROVIDED_PACKAGES.
+    """
+    kept: list[str] = []
+    for r in reqs:
+        if _extract_package_name(r) in _HOST_PROVIDED_PACKAGES:
+            log.warning(
+                "Dropping host-provided requirement %r (provided by the "
+                "SciQLop install)", r)
+            continue
+        kept.append(r)
+    return kept
+
+
 def _deduplicate_requirements(reqs: Sequence[str]) -> List[str]:
     """De-duplicate requirements by package name, keeping the *last* occurrence."""
     seen: dict[str, int] = {}
@@ -172,17 +192,7 @@ def generate_pyproject_toml(
     # which heals venvs already damaged in the field).
     implicit_deps = ["jupyqt"]
     raw_deps = [_normalize_url_requirement(r) for r in implicit_deps + list(manifest.requires) + list(plugin_deps)]
-    filtered = []
-    for r in raw_deps:
-        if _extract_package_name(r) in _HOST_PROVIDED_PACKAGES:
-            log.warning(
-                "Dropping host-provided requirement from workspace pyproject: %r "
-                "(provided by the SciQLop install)",
-                r,
-            )
-            continue
-        filtered.append(r)
-    all_deps = _deduplicate_requirements(filtered)
+    all_deps = _deduplicate_requirements(strip_host_provided(raw_deps))
     slug = _slugify(manifest.name)
 
     # Format the dependencies list

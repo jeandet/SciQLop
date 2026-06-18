@@ -363,6 +363,7 @@ def _prepare_workspace_dev(workspace_dir: Path, on_output=None) -> None:
     from SciQLop.components.workspaces.backend.workspace_setup import get_globally_enabled_plugins, get_plugin_folders
     from SciQLop.components.workspaces.backend.uv import uv_command
     from SciQLop.components.workspaces.backend.workspace_venv import _run_uv
+    from SciQLop.components.workspaces.backend.workspace_project import strip_host_provided
 
     workspace_dir.mkdir(parents=True, exist_ok=True)
     migrate_workspace(workspace_dir)
@@ -380,7 +381,7 @@ def _prepare_workspace_dev(workspace_dir: Path, on_output=None) -> None:
         workspace_plugins_add=manifest.plugins_add,
         workspace_plugins_remove=manifest.plugins_remove,
     )
-    all_deps = plugin_deps + manifest.requires
+    all_deps = strip_host_provided(plugin_deps + manifest.requires)
     if all_deps:
         try:
             cmd = uv_command("pip", "install", *all_deps)
