@@ -125,6 +125,46 @@ body.details-open {
     gap: 14px;
 }
 
+/* --- Hero banner --- */
+
+#hero:empty { display: none; }
+
+.hero {
+    position: relative;
+    height: 180px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--Borders);
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+.hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.hero-veil {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(10,12,16,.92) 0%, rgba(10,12,16,.55) 45%, rgba(10,12,16,0) 100%);
+}
+
+.hero-meta {
+    position: absolute; left: 22px; top: 0; bottom: 0;
+    display: flex; flex-direction: column; justify-content: center; max-width: 55%;
+}
+
+.hero-kick { font-size: 0.72em; letter-spacing: 1px; text-transform: uppercase; color: var(--Highlight); font-weight: 600; }
+.hero-meta h3 { font-size: 1.7em; margin: 4px 0 6px; color: #fff; }
+.hero-meta p { font-size: 0.9em; color: #c6d0de; margin-bottom: 12px; }
+
+.hero-btn {
+    align-self: flex-start;
+    background: var(--Highlight); color: var(--HighlightedText);
+    border: none; border-radius: 7px; padding: 7px 22px; font-size: 0.9em; cursor: pointer;
+}
+
+.hero-dots { position: absolute; bottom: 10px; right: 14px; display: flex; gap: 6px; }
+.hero-dots i { width: 8px; height: 8px; border-radius: 50%; background: #ffffff55; cursor: pointer; }
+.hero-dots i.on { background: #fff; }
+
 /* --- Sections --- */
 
 .sections { display: block; }

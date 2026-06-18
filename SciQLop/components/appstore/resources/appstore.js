@@ -5,6 +5,8 @@ var installedVersions = {};
 var activeTags = new Set();
 var activeCategory = "";
 var activeSort = "stars";
+var heroTimer = null;
+var heroIndex = 0;
 
 var TYPE_ICONS = {plugin: "\uD83D\uDD0C", workspace: "\uD83D\uDCC1", template: "\uD83D\uDCC4", example: "\uD83D\uDCD6"};
 
@@ -131,10 +133,73 @@ function renderSection(container, type, list) {
     container.appendChild(grid);
 }
 
+// --- Hero banner ---
+
+function featuredPackages() {
+    return allPackages.filter(function(p) { return cardImageUrl(p); });
+}
+
+function heroActionLabel(status) {
+    if (status === "installed") return "Installed ✓";
+    if (status === "update-available") return "Update";
+    return "Install";
+}
+
+function renderHero() {
+    var host = document.getElementById("hero");
+    if (heroTimer) { clearInterval(heroTimer); heroTimer = null; }
+    var query = (document.getElementById("search-input").value || "");
+    var feat = featuredPackages();
+    if (query || activeCategory || feat.length === 0) { host.innerHTML = ""; return; }
+
+    heroIndex = heroIndex % feat.length;
+    drawHero(host, feat);
+    if (feat.length > 1) {
+        heroTimer = setInterval(function() {
+            heroIndex = (heroIndex + 1) % feat.length;
+            drawHero(host, feat);
+        }, 6000);
+    }
+}
+
+function drawHero(host, feat) {
+    var pkg = feat[heroIndex];
+    var status = installStatus(pkg);
+    var dots = feat.map(function(_, i) {
+        return '<i class="' + (i === heroIndex ? "on" : "") + '" data-i="' + i + '"></i>';
+    }).join("");
+    host.innerHTML =
+        '<div class="hero">' +
+            '<img src="' + escapeAttr(cardImageUrl(pkg)) + '">' +
+            '<div class="hero-veil"></div>' +
+            '<div class="hero-meta">' +
+                '<span class="hero-kick">Featured</span>' +
+                '<h3>' + escapeHtml(pkg.name) + '</h3>' +
+                '<p>' + escapeHtml(pkg.description || "") + '</p>' +
+                '<button class="hero-btn">' + heroActionLabel(status) + '</button>' +
+            '</div>' +
+            '<div class="hero-dots">' + dots + '</div>' +
+        '</div>';
+
+    host.querySelector(".hero").addEventListener("click", function(e) {
+        if (e.target.closest(".hero-dots")) return;
+        selectCard(null);
+        showPackageDetails(pkg);
+    });
+    host.querySelectorAll(".hero-dots i").forEach(function(dot) {
+        dot.addEventListener("click", function(e) {
+            e.stopPropagation();
+            heroIndex = parseInt(dot.dataset.i, 10);
+            renderHero();
+        });
+    });
+}
+
 function renderCards() {
     var query = (document.getElementById("search-input").value || "").toLowerCase();
     var container = document.getElementById("package-cards");
     container.innerHTML = "";
+    renderHero();
     var filtered = filterPackages();
 
     // Flat grid while searching or when a single type tab is active; otherwise
@@ -453,7 +518,7 @@ function closeLightbox() {
 function selectCard(card) {
     if (selectedCard) selectedCard.classList.remove("selected");
     selectedCard = card;
-    card.classList.add("selected");
+    if (card) card.classList.add("selected");
 }
 
 // --- Event listeners ---
