@@ -117,66 +117,77 @@ function renderCards() {
     });
 
     filtered.forEach(function(pkg) {
-        container.appendChild(createPackageCard(pkg));
+        container.appendChild(createTile(pkg));
     });
 }
 
-// --- Card creation ---
+// --- Tile creation ---
 
-function createPackageCard(pkg) {
-    var card = document.createElement("div");
-    card.className = "card";
-    card.dataset.name = pkg.name.toLowerCase();
-    card.dataset.tags = (pkg.tags || []).join(" ").toLowerCase();
+// Deterministic hue 0-359 from the entry name, so an image-less tile always
+// gets the same color and tiles look intentional rather than broken.
+function tileHue(name) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) {
+        h = (h * 31 + name.charCodeAt(i)) % 360;
+    }
+    return h;
+}
 
-    var type = pkg.type || "plugin";
-    var icon = TYPE_ICONS[type] || "\uD83D\uDCE6";
-    var latest = latestVersion(pkg);
-    var versionStr = latest ? latest.version : "";
-    var starsHtml = pkg.stars != null ? "\u2B50 " + pkg.stars : "";
+function placeholderTile(pkg) {
+    var hue = tileHue(pkg.name || "?");
+    var initial = (pkg.name || "?").trim().charAt(0).toUpperCase();
+    return '<div class="tile-shot placeholder" style="background:linear-gradient(135deg,' +
+        'hsl(' + hue + ',38%,32%),hsl(' + ((hue + 40) % 360) + ',32%,18%))">' +
+        escapeHtml(initial) + '</div>';
+}
+
+function tileShot(pkg) {
+    var url = cardImageUrl(pkg);
+    if (!url) return placeholderTile(pkg);
+    return '<div class="tile-shot"><img src="' + escapeAttr(url) + '"></div>';
+}
+
+function statusBadgeHtml(status) {
+    if (status === "installed") return '<span class="status-badge installed">Installed</span>';
+    if (status === "update-available") return '<span class="status-badge update">Update</span>';
+    return "";
+}
+
+function createTile(pkg) {
+    var tile = document.createElement("div");
+    tile.className = "tile";
+    tile.dataset.name = (pkg.name || "").toLowerCase();
 
     var status = installStatus(pkg);
-    var badgeHtml = "";
-    if (status === "installed") {
-        badgeHtml = '<span class="status-badge installed">Installed</span>';
-    } else if (status === "update-available") {
-        badgeHtml = '<span class="status-badge update">Update available</span>';
-    }
+    var latest = latestVersion(pkg);
+    var versionStr = latest ? latest.version : "";
+    var starsHtml = pkg.stars != null ? "\u2605 " + pkg.stars : "\u2605 \u2014";
+    var footer = [starsHtml, pkg.license || "\u2014", versionStr ? "v" + versionStr : ""]
+        .filter(Boolean)
+        .map(function(s) { return '<span>' + escapeHtml(s) + '</span>'; })
+        .join("");
 
-    var thumbUrl = cardImageUrl(pkg);
-    var imageInner = thumbUrl
-        ? '<img class="card-image" src="' + escapeAttr(thumbUrl) + '">'
-        : '<div class="card-image placeholder">' + icon + '</div>';
-    card.innerHTML =
-        '<div class="card-image-wrapper">' + imageInner + '</div>' +
-        '<div class="card-body">' +
-            '<span class="card-badge">' + escapeHtml(type) + '</span>' +
-            badgeHtml +
-            '<span class="card-name">' + escapeHtml(pkg.name) + '</span>' +
-            '<div class="card-meta">' + escapeHtml(pkg.author) +
-                (versionStr ? ' \u00B7 v' + escapeHtml(versionStr) : '') +
-                (starsHtml ? ' \u00B7 ' + starsHtml : '') +
-            '</div>' +
+    tile.innerHTML =
+        tileShot(pkg) +
+        '<div class="tile-body">' +
+            '<div class="tile-name">' + escapeHtml(pkg.name) + statusBadgeHtml(status) + '</div>' +
+            '<div class="tile-sum">' + escapeHtml(pkg.description || "") + '</div>' +
+            '<div class="tile-ft">' + footer + '</div>' +
         '</div>';
 
-    var thumbEl = card.querySelector("img.card-image");
-    if (thumbEl) {
-        thumbEl.addEventListener("error", function() {
-            var wrap = thumbEl.parentNode;
-            if (wrap) wrap.innerHTML = '<div class="card-image placeholder">' + icon + '</div>';
+    var img = tile.querySelector(".tile-shot img");
+    if (img) {
+        img.addEventListener("error", function() {
+            tile.querySelector(".tile-shot").outerHTML = placeholderTile(pkg);
         });
     }
 
-    card.addEventListener("click", function() {
-        // Clicking the already-selected card toggles the details panel closed.
-        if (card === selectedCard) {
-            hideDetails();
-            return;
-        }
-        selectCard(card);
+    tile.addEventListener("click", function() {
+        if (tile === selectedCard) { hideDetails(); return; }
+        selectCard(tile);
         showPackageDetails(pkg);
     });
-    return card;
+    return tile;
 }
 
 // --- Carousel ---
