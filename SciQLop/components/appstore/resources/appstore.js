@@ -1,5 +1,4 @@
 var backend = null;
-var selectedCard = null;
 var allPackages = [];
 var installedVersions = {};
 var activeTags = new Set();
@@ -72,12 +71,6 @@ function installStatus(pkg) {
     if (!versions.length) return "installed";
     var latest = versions[versions.length - 1].version;
     return installed === latest ? "installed" : "update-available";
-}
-
-function statusLabel(status, installedVer) {
-    if (status === "installed") return "Installed \u2713";
-    if (status === "update-available") return "Update (v" + installedVer + " installed)";
-    return "";
 }
 
 // --- Rendering ---
@@ -181,7 +174,6 @@ function drawHero(host, feat) {
 
     host.querySelector(".hero").addEventListener("click", function(e) {
         if (e.target.closest(".hero-dots")) return;
-        selectCard(null);
         showPackageDetails(pkg);
     });
     host.querySelectorAll(".hero-dots i").forEach(function(dot) {
@@ -307,11 +299,7 @@ function createTile(pkg) {
         });
     }
 
-    tile.addEventListener("click", function() {
-        if (tile === selectedCard) { hideDetails(); return; }
-        selectCard(tile);
-        showPackageDetails(pkg);
-    });
+    tile.addEventListener("click", function() { showPackageDetails(pkg); });
     return tile;
 }
 
@@ -387,57 +375,81 @@ function initCarousel(root) {
     });
 }
 
-// --- Details panel ---
+// --- Detail page ---
+
+var detailReturnScroll = 0;
+
+function detailThumbsHtml(urls) {
+    if (urls.length < 2) return "";
+    var items = urls.map(function(u, i) {
+        return '<div class="detail-thumb' + (i === 0 ? ' on' : '') + '" data-i="' + i +
+            '"><img src="' + escapeAttr(u) + '"></div>';
+    }).join("");
+    return '<div class="detail-thumbs">' + items + '</div>';
+}
+
+function factRow(label, value) {
+    return '<div class="detail-fact"><label>' + escapeHtml(label) + '</label><span>' + value + '</span></div>';
+}
+
+function detailActionsHtml(pkg, status, latest) {
+    var name = escapeAttr(pkg.name);
+    if (!latest) return "";
+    var ver = escapeHtml(latest.version);
+    if (status === "installed") {
+        return '<button class="detail-btn installed" disabled>Installed \u2713</button>' +
+            '<button class="detail-btn uninstall" id="uninstall-btn" data-name="' + name + '">Uninstall</button>';
+    }
+    if (status === "update-available") {
+        return '<button class="detail-btn update" id="install-btn" data-name="' + name + '">Update to v' + ver + '</button>' +
+            '<button class="detail-btn uninstall" id="uninstall-btn" data-name="' + name + '">Uninstall</button>';
+    }
+    return '<button class="detail-btn install" id="install-btn" data-name="' + name + '">Install</button>';
+}
 
 function showPackageDetails(pkg) {
-    var panel = document.getElementById("details-panel");
-    document.getElementById("details-title").textContent = pkg.name;
-
     var type = pkg.type || "plugin";
     var latest = latestVersion(pkg);
     var versionStr = latest ? latest.version : "\u2014";
-    var compatStr = latest ? latest.sciqlop : "\u2014";
+    var compatStr = latest && latest.sciqlop ? latest.sciqlop : "\u2014";
     var status = installStatus(pkg);
     var installedVer = installedVersions[pkg.name] || null;
+    var shots = screenshotUrls(pkg);
+    var tagsHtml = (pkg.tags || []).join(" \u00B7 ") || "\u2014";
+    var starsHtml = pkg.stars != null ? "\u2605 " + pkg.stars : "\u2014";
 
-    var tagsHtml = (pkg.tags || []).map(function(t) {
-        return '<span class="card-badge">' + escapeHtml(t) + '</span>';
-    }).join(" ");
+    var carousel = shots.length > 0
+        ? renderCarousel(shots) + detailThumbsHtml(shots)
+        : '<div class="detail-noshot">' + escapeHtml((pkg.name || "?").charAt(0).toUpperCase()) + '</div>';
 
-    var starsHtml = pkg.stars != null ? '\u2B50 ' + pkg.stars : "\u2014";
+    var facts = factRow("Type", '<span class="card-badge">' + escapeHtml(type) + '</span>') +
+        factRow("Author", escapeHtml(pkg.author || "\u2014")) +
+        factRow("License", escapeHtml(pkg.license || "\u2014")) +
+        factRow("Version", escapeHtml(versionStr)) +
+        (installedVer ? factRow("Installed", "v" + escapeHtml(installedVer)) : "") +
+        factRow("Requires", "SciQLop " + escapeHtml(compatStr)) +
+        factRow("Stars", escapeHtml(starsHtml)) +
+        factRow("Tags", escapeHtml(tagsHtml));
 
-    var installedHtml = "";
-    if (installedVer) {
-        installedHtml = '<div class="details-field"><label>Installed</label><span>v' + escapeHtml(installedVer) + '</span></div>';
-    }
+    document.getElementById("detail-content").innerHTML =
+        '<div class="detail-grid">' +
+            '<div class="detail-media">' + carousel + '</div>' +
+            '<div class="detail-side">' +
+                '<h2>' + escapeHtml(pkg.name) + '</h2>' +
+                '<div class="detail-author">by ' + escapeHtml(pkg.author || "\u2014") + '</div>' +
+                '<div class="detail-actions">' + detailActionsHtml(pkg, status, latest) + '</div>' +
+                '<div class="detail-facts">' + facts + '</div>' +
+            '</div>' +
+            '<div class="detail-desc">' + escapeHtml(pkg.description || "") + '</div>' +
+        '</div>';
 
-    var buttonHtml = "";
-    if (latest) {
-        if (status === "installed") {
-            buttonHtml = '<button class="install installed" disabled>Installed \u2713</button>' +
-                '<button class="install uninstall" id="uninstall-btn" data-name="' + escapeHtml(pkg.name) + '">Uninstall</button>';
-        } else if (status === "update-available") {
-            buttonHtml = '<button class="install update" id="install-btn" data-name="' + escapeHtml(pkg.name) + '">Update to v' + escapeHtml(versionStr) + '</button>' +
-                '<button class="install uninstall" id="uninstall-btn" data-name="' + escapeHtml(pkg.name) + '">Uninstall</button>';
-        } else {
-            buttonHtml = '<button class="install" id="install-btn" data-name="' + escapeHtml(pkg.name) + '">Install</button>';
-        }
-    }
+    wireDetailActions();
+    initCarousel(document.getElementById("detail-content"));
+    initDetailThumbs();
+    openDetailPage();
+}
 
-    var content = document.getElementById("details-content");
-    content.innerHTML =
-        renderCarousel(screenshotUrls(pkg)) +
-        '<div class="details-field"><label>Type</label><span><span class="card-badge">' + escapeHtml(type) + '</span></span></div>' +
-        '<div class="details-field"><label>Author</label><span>' + escapeHtml(pkg.author) + '</span></div>' +
-        '<div class="details-field"><label>License</label><span>' + escapeHtml(pkg.license || "\u2014") + '</span></div>' +
-        '<div class="details-field"><label>Version</label><span>' + escapeHtml(versionStr) + '</span></div>' +
-        installedHtml +
-        (latest ? '<div class="details-field"><label>Requires</label><span>SciQLop ' + escapeHtml(compatStr) + '</span></div>' : '') +
-        '<div class="details-field"><label>Description</label><span>' + escapeHtml(pkg.description) + '</span></div>' +
-        '<div class="details-field"><label>Tags</label><span>' + tagsHtml + '</span></div>' +
-        '<div class="details-field"><label>Stars</label><span>' + starsHtml + '</span></div>' +
-        '<div class="details-actions">' + buttonHtml + '</div>';
-
+function wireDetailActions() {
     var btn = document.getElementById("install-btn");
     if (btn) {
         btn.addEventListener("click", function() {
@@ -447,7 +459,6 @@ function showPackageDetails(pkg) {
             backend.install_package(btn.dataset.name);
         });
     }
-
     var unBtn = document.getElementById("uninstall-btn");
     if (unBtn) {
         unBtn.addEventListener("click", function() {
@@ -457,12 +468,33 @@ function showPackageDetails(pkg) {
             backend.uninstall_package(unBtn.dataset.name);
         });
     }
+}
 
-    initCarousel(content);
+function initDetailThumbs() {
+    var root = document.getElementById("detail-content");
+    var thumbs = root.querySelectorAll(".detail-thumb");
+    var slides = root.querySelectorAll(".carousel-slide");
+    thumbs.forEach(function(thumb) {
+        thumb.addEventListener("click", function() {
+            var i = parseInt(thumb.dataset.i, 10);
+            slides.forEach(function(s, idx) { s.classList.toggle("active", idx === i); });
+            root.querySelectorAll(".carousel-dot").forEach(function(d, idx) { d.classList.toggle("active", idx === i); });
+            thumbs.forEach(function(t, idx) { t.classList.toggle("on", idx === i); });
+        });
+    });
+}
 
-    panel.classList.remove("hidden");
-    panel.classList.add("visible");
-    document.body.classList.add("details-open");
+function openDetailPage() {
+    detailReturnScroll = window.scrollY;
+    document.body.classList.add("detail-open");
+    document.getElementById("detail-page").classList.remove("hidden");
+    window.scrollTo(0, 0);
+}
+
+function hideDetails() {
+    document.getElementById("detail-page").classList.add("hidden");
+    document.body.classList.remove("detail-open");
+    window.scrollTo(0, detailReturnScroll);
 }
 
 function onInstallFinished(json_str) {
@@ -521,17 +553,6 @@ function onUninstallFinished(json_str) {
     }
 }
 
-function hideDetails() {
-    var panel = document.getElementById("details-panel");
-    panel.classList.remove("visible");
-    panel.classList.add("hidden");
-    document.body.classList.remove("details-open");
-    if (selectedCard) {
-        selectedCard.classList.remove("selected");
-        selectedCard = null;
-    }
-}
-
 function openLightbox(src) {
     var lb = document.getElementById("lightbox");
     document.getElementById("lightbox-img").src = src;
@@ -542,14 +563,6 @@ function closeLightbox() {
     var lb = document.getElementById("lightbox");
     lb.classList.add("hidden");
     document.getElementById("lightbox-img").src = "";
-}
-
-// --- Selection ---
-
-function selectCard(card) {
-    if (selectedCard) selectedCard.classList.remove("selected");
-    selectedCard = card;
-    if (card) card.classList.add("selected");
 }
 
 // --- Event listeners ---
@@ -574,7 +587,7 @@ document.addEventListener("DOMContentLoaded", function() {
         renderCards();
     });
 
-    document.getElementById("details-close").addEventListener("click", hideDetails);
+    document.getElementById("detail-back").addEventListener("click", hideDetails);
 
     document.getElementById("lightbox").addEventListener("click", closeLightbox);
 

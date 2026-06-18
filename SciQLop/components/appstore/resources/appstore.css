@@ -14,11 +14,6 @@ body {
     transition: padding-right 0.2s ease;
 }
 
-/* When the details panel is open, make room for it so it never covers cards. */
-body.details-open {
-    padding-right: 436px;
-}
-
 /* --- Page nav --- */
 
 #page-nav {
@@ -280,135 +275,81 @@ body.details-open {
     margin-right: 4px;
 }
 
-/* --- Details panel --- */
+/* --- Detail page --- */
 
-#details-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 420px;
-    height: 100vh;
-    background: var(--Window);
-    border-left: 1px solid var(--Borders);
+#detail-page {
+    position: absolute;
+    inset: 0;
+    background: var(--WelcomeBackground, var(--Base));
     padding: 16px;
     overflow-y: auto;
-    transform: translateX(100%);
-    transition: transform 0.2s ease;
-    z-index: 10;
+    z-index: 20;
 }
 
-#details-panel.visible {
-    transform: translateX(0);
-}
+#detail-page.hidden { display: none; }
+body.detail-open { overflow: hidden; }
 
-#details-panel.hidden {
-    transform: translateX(100%);
-}
+.detail-top { margin-bottom: 14px; }
 
-#details-close {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 28px;
-    height: 28px;
+#detail-back {
+    font-size: 0.9em;
+    color: var(--Text);
+    background: var(--Window);
     border: 1px solid var(--Borders);
-    border-radius: 4px;
-    background: var(--Button);
-    color: var(--ButtonText);
-    font-size: 1.1em;
-    line-height: 1;
+    border-radius: 6px;
+    padding: 6px 14px;
     cursor: pointer;
 }
 
-#details-close:hover {
-    background: var(--Highlight);
-    color: var(--HighlightedText);
+#detail-back:hover { background: var(--AlternateBase); }
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 24px;
+    max-width: 1100px;
 }
 
-#details-panel h2 {
-    margin-bottom: 8px;
-    padding-right: 36px;
+.detail-media .carousel { margin-bottom: 8px; }
+
+.detail-noshot {
+    aspect-ratio: 16 / 9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 4em; font-weight: 700; color: #cdd9ec;
+    background: linear-gradient(135deg, #2a3550, #1d2533);
+    border-radius: 8px;
 }
 
-#details-panel hr {
-    border: none;
-    border-top: 1px solid var(--Borders);
-    margin-bottom: 12px;
+.detail-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.detail-thumb {
+    width: 72px; height: 44px; border-radius: 5px; overflow: hidden;
+    border: 1px solid var(--Borders); cursor: pointer; background: var(--AlternateBase);
 }
+.detail-thumb.on { border-color: var(--Highlight); }
+.detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
-.details-field {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 8px;
-    align-items: baseline;
+.detail-side h2 { font-size: 1.5em; }
+.detail-author { color: var(--UnselectedText); font-size: 0.9em; margin: 2px 0 14px; }
+
+.detail-actions { display: flex; flex-direction: column; gap: 8px; }
+.detail-btn {
+    padding: 9px 16px; border: 1px solid var(--Borders); border-radius: 8px;
+    background: var(--Button); color: var(--ButtonText); cursor: pointer; font-size: 0.92em;
 }
+.detail-btn.install, .detail-btn.update { background: var(--Highlight); color: var(--HighlightedText); border-color: var(--Highlight); }
+.detail-btn.installed { background: #2ea043; color: #fff; border-color: #2ea043; cursor: default; }
+.detail-btn.uninstall { background: #da363490; color: #fff; border-color: #da3634; }
+.detail-btn:disabled { opacity: 0.6; cursor: wait; }
 
-.details-field label {
-    min-width: 100px;
-    font-weight: 500;
-    font-size: 0.9em;
-    color: var(--UnselectedText);
-}
+.detail-facts { margin-top: 16px; border-top: 1px solid var(--Borders); padding-top: 12px; }
+.detail-fact { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85em; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.detail-fact label { color: var(--UnselectedText); }
+.detail-fact span { text-align: right; }
 
-.details-field span {
-    flex: 1;
-    font-size: 0.9em;
-}
-
-.details-actions {
-    margin-top: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.details-actions button {
-    padding: 8px 16px;
-    border: 1px solid var(--Borders);
-    border-radius: 4px;
-    background: var(--Button);
-    color: var(--ButtonText);
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
-.details-actions button:hover {
-    background: var(--Highlight);
-    color: var(--HighlightedText);
-}
-
-.details-actions button.install {
-    background: var(--Highlight);
-    color: var(--HighlightedText);
-    border-color: var(--Highlight);
-}
-
-.details-actions button.install:hover {
-    opacity: 0.9;
-}
-
-.details-actions button.installed {
-    background: #2ea043;
-    color: #ffffff;
-    border-color: #2ea043;
-    cursor: default;
-}
-
-.details-actions button.update {
-    background: #d29b0090;
-    color: #fff;
-    border-color: #d29b00;
-}
-
-.details-actions button.uninstall {
-    background: #da363490;
-    color: #fff;
-    border-color: #da3634;
-}
-
-.details-actions button:disabled {
-    opacity: 0.6;
-    cursor: wait;
+.detail-desc {
+    grid-column: 1 / -1;
+    font-size: 0.9em; color: var(--Text); line-height: 1.55;
+    border-top: 1px solid var(--Borders); padding-top: 14px;
 }
 
 .install-error {
