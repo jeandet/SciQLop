@@ -103,7 +103,8 @@ class EasyProvider(DataProvider):
                  data_order=DataOrder.Y_FIRST,
                  cacheable=False, debug=False,
                  knobs_model: Optional[type] = None,
-                 knobs_kwarg_name: str = "knobs"):
+                 knobs_kwarg_name: str = "knobs",
+                 out_of_process: bool = False):
         super(EasyProvider, self).__init__(name=make_simple_incr_name(_name_callable(callback)), data_order=data_order,
                                            cacheable=cacheable)
         self._path = path.split('/')
@@ -113,12 +114,17 @@ class EasyProvider(DataProvider):
             **metadata,
             "description": f"Virtual {parameter_type.name} product built from Python function: {self.name}",
             "stable_id": path,
+            **({"remote": "True"} if out_of_process else {}),
         }
         products.add_node(
             product_path,
             ProductsModelNode(product_name, self.name, metadata, ProductsModelNodeType.PARAMETER, parameter_type, "",
                               None)
         )
+        if out_of_process:
+            from SciQLop.components.plotting.backend.remote.registry import remote_registry
+            arity = 3 if parameter_type == ParameterType.Spectrogram else 2
+            remote_registry().register(path, callback, arity)
         self._callback = callback
         self._parameter_type = parameter_type
         self._debug = debug
@@ -304,11 +310,12 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
 class EasyScalar(EasyProvider):
     def __init__(self, path, get_data_callback: VirtualProductCallback, component_name: str, metadata: dict,
                  data_order: DataOrder = DataOrder.Y_FIRST, cacheable=False, debug=False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super().__init__(path=path, callback=get_data_callback, parameter_type=ParameterType.Scalar,
                          metadata={**metadata, "components": component_name},
                          data_order=data_order, cacheable=cacheable, debug=debug,
-                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                         out_of_process=out_of_process)
         self._columns = [component_name]
 
     def get_data(self, product, start, stop, knobs=None):
@@ -326,11 +333,12 @@ class EasyScalar(EasyProvider):
 class EasyVector(EasyProvider):
     def __init__(self, path, get_data_callback: VirtualProductCallback, components_names: List[str], metadata: dict,
                  data_order: DataOrder = DataOrder.Y_FIRST, cacheable=False, debug=False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super().__init__(path=path, callback=get_data_callback, parameter_type=ParameterType.Vector,
                          metadata={**metadata, "components": ';'.join(components_names)},
                          data_order=data_order, cacheable=cacheable, debug=debug,
-                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                         out_of_process=out_of_process)
         self._columns = components_names
 
     def get_data(self, product, start, stop, knobs=None) -> Optional[DataProviderReturnType]:
@@ -351,20 +359,21 @@ class EasyVector(EasyProvider):
 class EasyMultiComponent(EasyVector):
     def __init__(self, path, get_data_callback: VirtualProductCallback, components_names: List[str], metadata: dict,
                  data_order: DataOrder = DataOrder.Y_FIRST, cacheable=False, debug=False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         # Skip EasyVector.__init__ intentionally — same logic but with Multicomponents type
         EasyProvider.__init__(self, path=path, callback=get_data_callback,
                               parameter_type=ParameterType.Multicomponents,
                               metadata={**metadata, "components": ';'.join(components_names)},
                               data_order=data_order, cacheable=cacheable, debug=debug,
-                              knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                              knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                              out_of_process=out_of_process)
         self._columns = components_names
 
 
 class EasySpectrogram(EasyProvider):
     def __init__(self, path, get_data_callback: VirtualProductCallback, metadata: dict,
                  data_order: DataOrder = DataOrder.Y_FIRST, cacheable=False, debug=False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super().__init__(path=path, callback=get_data_callback,
                          parameter_type=ParameterType.Spectrogram,
                          metadata={**metadata},
@@ -372,7 +381,8 @@ class EasySpectrogram(EasyProvider):
                          cacheable=cacheable,
                          debug=debug,
                          knobs_model=knobs_model,
-                         knobs_kwarg_name=knobs_kwarg_name)
+                         knobs_kwarg_name=knobs_kwarg_name,
+                         out_of_process=out_of_process)
 
     def get_data(self, product, start, stop, knobs=None) -> Optional[DataProviderReturnType]:
         res = self._invoke_callback(start, stop, knobs)

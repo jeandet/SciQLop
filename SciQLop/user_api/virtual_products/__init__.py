@@ -48,46 +48,50 @@ class VirtualProduct:
 class VirtualScalar(VirtualProduct):
     def __init__(self, path: str, callback: VirtualProductCallback, label: str,
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super(VirtualScalar, self).__init__(path, callback, VirtualProductType.Scalar)
         if not isinstance(label, str) or not label.strip():
             raise ValueError("Scalar virtual products need exactly one non-empty label")
         self._impl = _EasyScalar(path, callback, component_name=label, metadata={},
                                  debug=debug, cacheable=cachable,
-                                 knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                                 knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                                 out_of_process=out_of_process)
 
 
 class VirtualVector(VirtualProduct):
     def __init__(self, path: str, callback: VirtualProductCallback, labels: List[str],
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super(VirtualVector, self).__init__(path, callback, VirtualProductType.Vector)
         if not isinstance(labels, (list, tuple)) or len(labels) != 3:
             raise ValueError("Vector virtual products need exactly three labels")
         self._impl = _EasyVector(path, callback, components_names=labels, metadata={},
                                  debug=debug, cacheable=cachable,
-                                 knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                                 knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                                 out_of_process=out_of_process)
 
 
 class VirtualMultiComponent(VirtualProduct):
     def __init__(self, path: str, callback: VirtualProductCallback, labels: List[str],
                  debug: Optional[bool] = False, cachable: Optional[bool] = False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super(VirtualMultiComponent, self).__init__(path, callback, VirtualProductType.MultiComponent)
         if not isinstance(labels, (list, tuple)) or not labels:
             raise ValueError("MultiComponent virtual products need a non-empty list of labels")
         self._impl = _EasyMultiComponent(path, callback, components_names=labels, metadata={},
                                          debug=debug, cacheable=cachable,
-                                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                                         knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                                         out_of_process=out_of_process)
 
 
 class VirtualSpectrogram(VirtualProduct):
     def __init__(self, path: str, callback: VirtualProductCallback, debug: Optional[bool] = False,
                  cachable: Optional[bool] = False,
-                 knobs_model=None, knobs_kwarg_name="knobs"):
+                 knobs_model=None, knobs_kwarg_name="knobs", out_of_process: bool = False):
         super(VirtualSpectrogram, self).__init__(path, callback, VirtualProductType.Spectrogram)
         self._impl = _EasySpectrogram(path, callback, metadata={}, debug=debug, cacheable=cachable,
-                                      knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name)
+                                      knobs_model=knobs_model, knobs_kwarg_name=knobs_kwarg_name,
+                                      out_of_process=out_of_process)
 
 
 def create_virtual_product(path: str, callback: VirtualProductCallback,
