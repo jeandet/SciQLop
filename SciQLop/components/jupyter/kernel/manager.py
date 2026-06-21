@@ -1,3 +1,7 @@
+import asyncio
+import concurrent.futures
+from typing import Any, Dict
+
 from jupyqt import EmbeddedJupyter
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QColor
@@ -33,6 +37,33 @@ def _sync_theme_via_api(launcher):
         pass
 
 
+async def _run_and_capture(shell, code: str) -> Dict[str, Any]:
+    """Run a cell on the kernel thread, mirroring jupyqt's own execution path
+    (run_cell_async for top-level await, run_cell otherwise) under output capture."""
+    from IPython.utils.capture import capture_output
+
+    try:
+        transformed = shell.transform_cell(code)
+    except Exception:
+        transformed = code
+    with capture_output() as cap:
+        if shell.should_run_async(code, transformed_cell=transformed):
+            result = await shell.run_cell_async(code, store_history=False)
+        else:
+            result = shell.run_cell(code, store_history=False)
+    error = None
+    if not result.success:
+        err = result.error_in_exec or result.error_before_exec
+        error = f"{type(err).__name__}: {err}" if err is not None else "cell failed"
+    return {
+        "stdout": cap.stdout or "",
+        "stderr": cap.stderr or "",
+        "result": repr(result.result) if result.result is not None else None,
+        "success": bool(result.success),
+        "error": error,
+    }
+
+
 class KernelManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,6 +80,18 @@ class KernelManager(QObject):
 
     def push_variables(self, variables: dict):
         self._jupyter.push(variables)
+
+    def submit_cell(self, code: str) -> concurrent.futures.Future:
+        """Schedule ``code`` on the kernel thread — where cells run — and return a
+        Future resolving to a captured-output dict (stdout/stderr/result/success/
+        error). It never executes on the calling thread, so the GUI event loop
+        stays responsive even while the cell blocks (e.g. a slow data fetch).
+        Await it from the GUI loop via ``asyncio.wrap_future``.
+        """
+        loop = self._jupyter._kernel_thread.loop
+        if loop is None:
+            raise RuntimeError("kernel thread is not running")
+        return asyncio.run_coroutine_threadsafe(_run_and_capture(self.shell, code), loop)
 
     def wrap_qt(self, obj):
         return self._jupyter.wrap_qt(obj)

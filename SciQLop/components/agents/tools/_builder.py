@@ -11,11 +11,22 @@ import asyncio
 import base64
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional
 
 from SciQLop.user_api.threading import on_main_thread
 
 from . import context
+
+# Off-loop pool for tools that do blocking I/O with no Qt affinity (speasy
+# inventory, api-reference introspection, notebook file I/O). Keeps the qasync
+# event loop — which is the Qt GUI thread — responsive while they run.
+_IO_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sciqlop-agent-tool")
+
+
+async def _in_io_pool(fn: Callable[..., Any], *args: Any) -> Any:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_IO_POOL, fn, *args)
 
 
 def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
@@ -63,10 +74,18 @@ def _text_tool(
     schema: Dict[str, Any],
     call: Callable[[Dict[str, Any]], Any],
     gated: bool = False,
+    thread: bool = False,
 ) -> Dict[str, Any]:
+    """Wrap a callable as a text tool. ``thread=True`` runs the (synchronous,
+    Qt-free) callable in the I/O pool so it never blocks the GUI event loop;
+    leave it False for callables that touch Qt and must run on the GUI thread."""
+
     async def _run(payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            result = call(payload)
+            if thread:
+                result = await _in_io_pool(call, payload)
+            else:
+                result = call(payload)
             if asyncio.iscoroutine(result):
                 result = await result
         except Exception as e:
@@ -172,6 +191,7 @@ def _api_reference_tool() -> Dict[str, Any]:
             "required": [],
         },
         lambda p: api_reference.render(str(p.get("module", ""))),
+        thread=True,
     )
 
 
@@ -193,6 +213,7 @@ def _speasy_inventory_tool() -> Dict[str, Any]:
             "required": [],
         },
         lambda p: speasy_inventory.render(str(p.get("path", ""))),
+        thread=True,
     )
 
 
@@ -279,6 +300,7 @@ def _list_notebooks_tool() -> Dict[str, Any]:
         ),
         {"type": "object", "properties": {}, "required": []},
         lambda _: notebooks.list_notebooks(),
+        thread=True,
     )
 
 
@@ -297,6 +319,7 @@ def _read_notebook_tool() -> Dict[str, Any]:
             "required": ["path"],
         },
         lambda p: notebooks.read_notebook(str(p["path"])),
+        thread=True,
     )
 
 
@@ -364,48 +387,46 @@ def _create_panel_tool(main_window) -> Dict[str, Any]:
 
 
 def _exec_python_tool() -> Dict[str, Any]:
-    @on_main_thread
-    def _run(code: str) -> Dict[str, Any]:
-        shell = _get_shell()
-        if shell is None:
-            return _error_content("embedded IPython shell is not available")
-        from IPython.utils.capture import capture_output
-        with capture_output() as cap:
-            result = shell.run_cell(code, store_history=False)
-        lines: List[str] = []
-        if cap.stdout:
-            lines.append(f"stdout:\n{cap.stdout.rstrip()}")
-        if cap.stderr:
-            lines.append(f"stderr:\n{cap.stderr.rstrip()}")
-        if result.result is not None:
-            lines.append(f"result: {result.result!r}")
-        if not result.success:
-            err = result.error_in_exec or result.error_before_exec
-            if err is not None:
-                lines.append(f"error: {type(err).__name__}: {err}")
-            else:
-                lines.append("error: cell failed without exception detail")
-        if not lines:
-            lines.append("ok (no output)")
-        return {"content": [{"type": "text", "text": "\n\n".join(lines)}]}
+    async def _run(payload: Dict[str, Any]) -> Dict[str, Any]:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        try:
+            result = await asyncio.wrap_future(km.submit_cell(str(payload["code"])))
+        except Exception as e:
+            return _error_content(f"{type(e).__name__}: {e}")
+        return {"content": [{"type": "text", "text": _format_exec_result(result)}]}
 
-    return _text_tool(
-        "sciqlop_exec_python",
-        (
+    return {
+        "name": "sciqlop_exec_python",
+        "description": (
             "Run arbitrary Python in the SciQLop embedded IPython kernel. "
             "The SciQLop `user_api` (sciqlop.user_api.plot, user_api.gui, user_api.catalogs, "
             "user_api.virtual_products), speasy, numpy and the main window are all "
             "importable. Prefer this over bespoke tools for anything SciQLop-related. "
             "Returns captured stdout/stderr, repr of the last expression, and any exception."
         ),
-        {
+        "input_schema": {
             "type": "object",
             "properties": {"code": {"type": "string"}},
             "required": ["code"],
         },
-        lambda p: _run(str(p["code"])),
-        gated=True,
-    )
+        "handler": _run,
+        "gated": True,
+    }
+
+
+def _format_exec_result(result: Dict[str, Any]) -> str:
+    lines: List[str] = []
+    if result.get("stdout"):
+        lines.append(f"stdout:\n{result['stdout'].rstrip()}")
+    if result.get("stderr"):
+        lines.append(f"stderr:\n{result['stderr'].rstrip()}")
+    if result.get("result") is not None:
+        lines.append(f"result: {result['result']}")
+    if not result.get("success") and result.get("error"):
+        lines.append(f"error: {result['error']}")
+    return "\n\n".join(lines) if lines else "ok (no output)"
 
 
 _CELL_TYPES = ["code", "markdown", "raw"]
@@ -450,12 +471,12 @@ def _notebook_write_tools() -> List[Dict[str, Any]]:
                 "Clears execution outputs for code cells. Optionally change "
                 "the cell_type ('code', 'markdown', 'raw')."
             ),
-            cell_schema, _write, gated=True,
+            cell_schema, _write, gated=True, thread=True,
         ),
         _text_tool(
             "sciqlop_insert_notebook_cell",
             "Insert a new cell at the given index in a workspace notebook. cell_type defaults to 'code'.",
-            cell_schema, _insert, gated=True,
+            cell_schema, _insert, gated=True, thread=True,
         ),
         _text_tool(
             "sciqlop_delete_notebook_cell",
@@ -468,7 +489,7 @@ def _notebook_write_tools() -> List[Dict[str, Any]]:
                 },
                 "required": ["path", "index"],
             },
-            _delete, gated=True,
+            _delete, gated=True, thread=True,
         ),
         _text_tool(
             "sciqlop_create_notebook",
@@ -481,16 +502,15 @@ def _notebook_write_tools() -> List[Dict[str, Any]]:
                 "properties": {"path": {"type": "string"}},
                 "required": ["path"],
             },
-            _create, gated=True,
+            _create, gated=True, thread=True,
         ),
     ]
 
 
-def _get_shell():
+def _kernel_manager():
     try:
         from SciQLop.components.workspaces import workspaces_manager_instance
         mgr = workspaces_manager_instance()
-        km = getattr(mgr, "_kernel_manager", None)
-        return getattr(km, "shell", None) if km is not None else None
+        return getattr(mgr, "_kernel_manager", None)
     except Exception:
         return None
