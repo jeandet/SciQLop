@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from multiprocessing.connection import Listener
 from typing import Dict
 
@@ -28,6 +29,7 @@ class RemoteWorker(QObject):
         self._conn = None
         self._notifier: QSocketNotifier | None = None
         self._channels: Dict[int, object] = {}
+        self._accept_timeout = 15.0   # seconds to wait for the worker to connect
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -43,10 +45,34 @@ class RemoteWorker(QObject):
         )
         self._proc.stdin.write(authkey)
         self._proc.stdin.close()
-        self._conn = listener.accept()
-        listener.close()
+        self._conn = self._accept_or_timeout(listener)
         self._notifier = QSocketNotifier(self._conn.fileno(), QSocketNotifier.Type.Read)
         self._notifier.activated.connect(self._on_readable)
+
+    def _accept_or_timeout(self, listener):
+        """Accept the worker's connection without blocking the UI forever: if
+        the worker fails to connect within the timeout, kill it and raise
+        (the registry respawns lazily on the next request)."""
+        result = {}
+
+        def _accept():
+            try:
+                result["conn"] = listener.accept()
+            except Exception:   # listener.close() below lands here, unblocking accept()
+                pass
+
+        t = threading.Thread(target=_accept, daemon=True)
+        t.start()
+        t.join(self._accept_timeout)
+        if "conn" not in result:
+            self._proc.kill()
+            listener.close()    # unblocks the still-waiting accept() in the thread
+            self._proc, self._conn = None, None
+            raise RuntimeError(
+                f"remote worker for {self.plugin_key!r} did not connect within "
+                f"{self._accept_timeout:.0f}s")
+        listener.close()
+        return result["conn"]
 
     def shutdown(self) -> None:
         try:

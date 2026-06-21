@@ -31,7 +31,11 @@ def _stale_sweep(prefix: str = "sciqlop") -> None:
     for path in glob.glob(os.path.join(base, f"{prefix}_*")):
         try:
             from multiprocessing import shared_memory
-            shared_memory.SharedMemory(name=os.path.basename(path), track=False).unlink()
+            shm = shared_memory.SharedMemory(name=os.path.basename(path), track=False)
+            try:
+                shm.unlink()
+            finally:
+                shm.close()
         except Exception:
             pass
 

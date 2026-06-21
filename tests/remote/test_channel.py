@@ -54,6 +54,19 @@ def test_current_result_sets_data_and_frees_previous_on_supersede():
     s1.unlink(); s2.unlink()
 
 
+def test_duplicate_result_for_held_segment_is_not_freed():
+    # A re-delivered RESULT naming the segment we currently hold must not be
+    # FREEd back to the worker — it is still the live buffer SciQLopPlots reads.
+    pipe, t = FakePipeline(), FakeTransport()
+    ch = RemoteChannel(pipeline=pipe, channel_id=5, transport=t)
+    ch.on_data_requested_values(0.0, 1.0)   # req 1 -> latest
+    n1, l1, s1 = _make_segment([np.array([0.0]), np.array([1.0])])
+    ch.on_result(1, n1, l1, 2)              # accept, held = n1
+    ch.on_result(1, n1, l1, 2)              # duplicate, same segment, req_id == latest
+    assert (5, n1) not in t.frees           # the held/live segment must NOT be freed
+    s1.unlink()
+
+
 def test_stale_result_is_dropped_and_immediately_freed():
     pipe, t = FakePipeline(), FakeTransport()
     ch = RemoteChannel(pipeline=pipe, channel_id=5, transport=t)

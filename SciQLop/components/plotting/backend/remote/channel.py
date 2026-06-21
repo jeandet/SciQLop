@@ -53,7 +53,8 @@ class RemoteChannel:
         self._held, self._held_name = shm, name
         if prev is not None:
             prev.close()
-            self._transport.send_free(self.channel_id, prev_name)
+            if prev_name != name:   # never FREE the segment we still hold live
+                self._transport.send_free(self.channel_id, prev_name)
 
     def dispose(self) -> None:
         self._transport.release(self.channel_id)
