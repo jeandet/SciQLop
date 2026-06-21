@@ -592,6 +592,11 @@ def plot_product(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjectio
     log.debug(f"Provider: {provider}")
     if provider is None:
         return None
+    from SciQLop.components.plotting.backend.remote.registry import remote_registry
+    if remote_registry().is_remote(product):
+        from SciQLop.components.plotting.backend.remote.plot_remote import plot_remote
+        target, _ = _resolve_plot_target(p, kwargs)
+        return plot_remote(target, node, provider, product)
     product_path_str = "//".join(product)
     target, existing_plot = _resolve_plot_target(p, kwargs)
     log.debug(f"Parameter type: {node.parameter_type()}")
