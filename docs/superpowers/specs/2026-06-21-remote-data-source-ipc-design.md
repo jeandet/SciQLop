@@ -28,8 +28,8 @@ model.
 
 **Transport decision: cloudpickle the existing callable (approach A).** The thing
 shipped across the boundary *is* the data-source callable, matching the scope
-literally and imposing minimal author burden. The radio callback runs nearly
-as-is once its compute code is Qt-free (see §8).
+literally and imposing minimal author burden. The radio callback runs as-is — no
+plugin change is required (see §8 for the one quality caveat).
 
 ### v1 limitations (explicit)
 
@@ -173,15 +173,24 @@ offsets; the main side builds N typed views into it.
   `INSTALL` once, bind a `RemoteChannel` wiring `ch.data_requested → worker`.
   The non-remote path is untouched.
 
-## 8. Code-hygiene prerequisite (radio plugin)
+## 8. Qt-in-worker caveat (no plugin change required)
 
-`_open_and_convert` currently lives in `sciqlop_radio/dock.py`, which imports
-PySide6 at module level. cloudpickle-by-reference would re-import that module in
-the worker, dragging Qt in for no functional reason (the actual reader,
-`reader.open_spectrogram`, is already Qt-free). **Move `_open_and_convert` (and
-any other compute referenced by the callback) into a Qt-free module** so the
-worker never imports Qt. This is good separation regardless of approach. (Radio
-plugin change, out of the SciQLop tree.)
+The radio callback closes over `_open_and_convert`, which lives in
+`sciqlop_radio/dock.py` — a module that imports PySide6 at top level. cloudpickle
+serializes that reference by module + qualname, so the worker does
+`import sciqlop_radio.dock` and **Qt loads in the worker**.
+
+This is **not a blocker and requires no change to the radio plugin.** Importing
+`PySide6.QtWidgets` needs no `QApplication` and no QPA platform plugin; the
+callback only *references* a function in that module, it never instantiates a
+widget. So the worker spawns and runs correctly — it is merely **heavier** (full
+Qt GUI stack loaded into a compute process) with no functional cost, and we never
+force `QT_QPA_PLATFORM`.
+
+The IPC layer is therefore **agnostic** to whether a plugin's callable transitively
+imports Qt. Keeping data-source compute in Qt-free modules (the reader,
+`reader.open_spectrogram`, already is) is **optional plugin-author guidance** to
+shed that weight — not part of this work, and the radio plugin is left untouched.
 
 ## 9. Lifecycle & error handling
 
