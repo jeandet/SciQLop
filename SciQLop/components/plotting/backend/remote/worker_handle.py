@@ -72,28 +72,32 @@ class RemoteWorker(QObject):
 
     # --- transport interface (called by RemoteChannel) ----------------------
     def send_request(self, channel_id: int, req_id: int, start: float, stop: float) -> None:
-        self._conn.send((P.REQUEST, channel_id, req_id, start, stop))
+        self._send((P.REQUEST, channel_id, req_id, start, stop))
 
     def send_free(self, channel_id: int, name: str) -> None:
-        self._conn.send((P.FREE, channel_id, name))
+        self._send((P.FREE, channel_id, name))
 
     def release(self, channel_id: int) -> None:
         self._channels.pop(channel_id, None)
-        if self._conn is not None:
-            try:
-                self._conn.send((P.RELEASE, channel_id))
-            except Exception:
-                pass
+        self._send((P.RELEASE, channel_id))
+
+    def _send(self, msg) -> None:
+        """Best-effort send. A dead worker (conn closed) degrades quietly so a
+        late data_requested/FREE can't raise out of a Qt slot."""
+        if self._conn is None:
+            return
+        try:
+            self._conn.send(msg)
+        except (EOFError, OSError):
+            self._on_worker_died()
 
     # --- reply pump ---------------------------------------------------------
     def _on_readable(self) -> None:
-        while self._conn is not None and self._conn.poll(0):
-            try:
-                msg = self._conn.recv()
-            except EOFError:
-                self._on_worker_died()
-                return
-            self._dispatch(msg)
+        try:
+            while self._conn is not None and self._conn.poll(0):
+                self._dispatch(self._conn.recv())
+        except (EOFError, OSError):
+            self._on_worker_died()
 
     def _dispatch(self, msg) -> None:
         tag = msg[0]
