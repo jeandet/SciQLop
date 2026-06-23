@@ -54,6 +54,8 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _wait_for_plot_data_tool(main_window),
         _list_notebooks_tool(),
         _read_notebook_tool(),
+        _kernel_vars_tool(),
+        _inspect_tool(),
     ]
     tools.extend(_write_tools(main_window))
     return tools
@@ -323,6 +325,56 @@ def _read_notebook_tool() -> Dict[str, Any]:
     )
 
 
+def _kernel_vars_tool() -> Dict[str, Any]:
+    def _run(_payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        from . import kernel
+        return kernel.kernel_vars(km.shell)
+    return _text_tool(
+        "sciqlop_kernel_vars",
+        "List the user variables currently defined in the SciQLop embedded "
+        "kernel (name, type, and a short summary). Read-only.",
+        {"type": "object", "properties": {}, "required": []},
+        _run,
+    )
+
+
+def _inspect_tool() -> Dict[str, Any]:
+    def _run(payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        from . import kernel
+        return kernel.inspect_name(km.shell, str(payload["name"]))
+    return _text_tool(
+        "sciqlop_inspect",
+        "Inspect a name in the SciQLop embedded kernel — type, value, and "
+        "docstring. Read-only.",
+        {"type": "object", "properties": {"name": {"type": "string"}},
+         "required": ["name"]},
+        _run,
+    )
+
+
+def _interrupt_kernel_tool() -> Dict[str, Any]:
+    def _run(_payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        km.interrupt()
+        return "interrupt sent to the embedded kernel"
+    return _text_tool(
+        "sciqlop_interrupt_kernel",
+        "Interrupt the currently running cell in the SciQLop embedded kernel "
+        "(raises KeyboardInterrupt). Use to recover a long or stuck cell.",
+        {"type": "object", "properties": {}, "required": []},
+        _run,
+        gated=True,
+    )
+
+
 def _write_tools(main_window) -> List[Dict[str, Any]]:
     @on_main_thread
     def _set_time_range(name: Optional[str], start: float, stop: float):
@@ -354,7 +406,7 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
         gated=True,
     )
 
-    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool()]
+    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
