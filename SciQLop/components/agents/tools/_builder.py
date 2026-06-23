@@ -354,7 +354,7 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
         gated=True,
     )
 
-    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool()] + _notebook_write_tools()
+    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
@@ -505,6 +505,38 @@ def _notebook_write_tools() -> List[Dict[str, Any]]:
             _create, gated=True, thread=True,
         ),
     ]
+
+
+def _run_notebook_cell_tool() -> Dict[str, Any]:
+    async def _run(payload: Dict[str, Any]) -> Dict[str, Any]:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        from . import notebooks
+        try:
+            summary = await asyncio.wrap_future(
+                notebooks.run_cell(km, str(payload["path"]), int(payload["index"])),
+            )
+        except Exception as e:  # noqa: BLE001
+            return _error_content(f"{type(e).__name__}: {e}")
+        return {"content": [{"type": "text", "text": summary}]}
+
+    return {
+        "name": "sciqlop_run_notebook_cell",
+        "description": (
+            "Run a code cell in a workspace notebook on the SciQLop embedded "
+            "kernel (shared with JupyterLab — variables persist). Writes the "
+            "cell's outputs back into the .ipynb (JupyterLab reloads) and returns "
+            "a summary. path is workspace-relative; index is 0-based."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "index": {"type": "integer"}},
+            "required": ["path", "index"],
+        },
+        "handler": _run,
+        "gated": True,
+    }
 
 
 def _kernel_manager():

@@ -165,3 +165,57 @@ def _new_cell(cell_type: str, source: str):
     if cell_type == "raw":
         return nbformat.v4.new_raw_cell(source)
     raise ValueError(f"unknown cell_type: {cell_type!r}")
+
+
+def run_cell(km, rel_path: str, index: int, sink=None):
+    """Run a code cell on the embedded kernel, write its outputs back via the
+    sink, and return a concurrent.futures.Future[str] summary. ``km`` is the
+    KernelManager; ``sink`` defaults to DiskNotebookSink."""
+    import nbformat
+    from concurrent.futures import Future
+    from ._notebook_sink import DiskNotebookSink
+    from ._outputs import to_nbformat
+
+    nb_path = _resolve_notebook(rel_path)
+    nb = nbformat.read(str(nb_path), as_version=4)
+    if index < 0 or index >= len(nb.cells):
+        f: Future = Future()
+        f.set_result(f"error: index {index} out of range (0..{len(nb.cells) - 1})")
+        return f
+    cell = nb.cells[index]
+    if cell.get("cell_type") != "code":
+        f = Future()
+        f.set_result(f"error: cell {index} is {cell.get('cell_type')}, not code")
+        return f
+    source = cell.get("source", "")
+    if isinstance(source, list):
+        source = "".join(source)
+    the_sink = sink or DiskNotebookSink()
+
+    cap_future = km.run_cell_capture(source)
+    out: Future = Future()
+
+    def _done(cf):
+        try:
+            captured = cf.result()
+            outputs = to_nbformat(captured)
+            the_sink.write_outputs(rel_path, index, outputs, captured["execution_count"])
+            out.set_result(_summarize(captured))
+        except Exception as e:  # noqa: BLE001
+            out.set_result(f"error: {type(e).__name__}: {e}")
+
+    cap_future.add_done_callback(_done)
+    return out
+
+
+def _summarize(captured) -> str:
+    n = captured.get("execution_count")
+    head = f"[{n}] " + ("ok" if captured.get("success") else "error")
+    parts = [head]
+    if captured.get("stdout"):
+        parts.append("stdout: " + captured["stdout"].strip()[:500])
+    if captured.get("result") is not None:
+        parts.append("result: " + str(captured["result"])[:500])
+    if not captured.get("success"):
+        parts.append(captured.get("error") or "cell failed")
+    return "\n".join(parts)
