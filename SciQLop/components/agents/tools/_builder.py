@@ -338,6 +338,7 @@ def _kernel_vars_tool() -> Dict[str, Any]:
         "kernel (name, type, and a short summary). Read-only.",
         {"type": "object", "properties": {}, "required": []},
         _run,
+        thread=True,  # repr() of arbitrary objects must not run on the GUI thread
     )
 
 
@@ -355,6 +356,7 @@ def _inspect_tool() -> Dict[str, Any]:
         {"type": "object", "properties": {"name": {"type": "string"}},
          "required": ["name"]},
         _run,
+        thread=True,  # object_inspect does file I/O for docstrings; keep off the GUI thread
     )
 
 
