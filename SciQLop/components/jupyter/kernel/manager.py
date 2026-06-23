@@ -1,5 +1,7 @@
 import asyncio
 import concurrent.futures
+import re as _re
+import traceback as _traceback
 from typing import Any, Dict
 
 from jupyqt import EmbeddedJupyter
@@ -64,10 +66,54 @@ async def _run_and_capture(shell, code: str) -> Dict[str, Any]:
     }
 
 
+async def _run_and_capture_rich(shell, code: str, execution_count: int) -> Dict[str, Any]:
+    """Like _run_and_capture but also returns rich display outputs, a traceback,
+    and the execution_count, for notebook-style write-back."""
+    from IPython.utils.capture import capture_output
+
+    try:
+        transformed = shell.transform_cell(code)
+    except Exception:
+        transformed = code
+    with capture_output() as cap:
+        if shell.should_run_async(code, transformed_cell=transformed):
+            result = await shell.run_cell_async(code, store_history=False)
+        else:
+            result = shell.run_cell(code, store_history=False)
+    error = None
+    tb: list = []
+    if not result.success:
+        err = result.error_in_exec or result.error_before_exec
+        error = f"{type(err).__name__}: {err}" if err is not None else "cell failed"
+        if err is not None:
+            tb = _traceback.format_exception(type(err), err, err.__traceback__)
+    displays = [{"data": dict(o.data), "metadata": dict(o.metadata or {})}
+                for o in cap.outputs]
+    stdout = cap.stdout or ""
+    if result.result is not None:
+        # shell.run_cell's display_trap re-installs the shell displayhook, which
+        # echoes "Out[N]: <repr>\n" to captured stdout. result.result already
+        # carries the value, so strip only that exact trailing echo (anchored at
+        # end, matching the actual repr) to avoid duplicating it as a stream.
+        echo = _re.compile(r"Out\[\d+\]: " + _re.escape(repr(result.result)) + r"\n?\Z")
+        stdout = echo.sub("", stdout)
+    return {
+        "stdout": stdout,
+        "stderr": cap.stderr or "",
+        "result": repr(result.result) if result.result is not None else None,
+        "displays": displays,
+        "success": bool(result.success),
+        "error": error,
+        "traceback": tb,
+        "execution_count": execution_count,
+    }
+
+
 class KernelManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._jupyter = EmbeddedJupyter()
+        self._exec_count = 0
         init_invoker(self._jupyter._invoker)
         register_all_magics(self._jupyter.shell)
 
@@ -96,6 +142,18 @@ class KernelManager(QObject):
         if loop is None:
             raise RuntimeError("kernel thread is not running")
         return asyncio.run_coroutine_threadsafe(_run_and_capture(self.shell, code), loop)
+
+    def run_cell_capture(self, code: str) -> concurrent.futures.Future:
+        """Schedule ``code`` on the kernel thread and return a Future resolving to
+        a rich captured-output dict (stdout/stderr/result/displays/success/error/
+        traceback/execution_count). Await via ``asyncio.wrap_future``."""
+        loop = self._jupyter.kernel_thread.loop
+        if loop is None:
+            raise RuntimeError("kernel thread is not running")
+        self._exec_count += 1
+        return asyncio.run_coroutine_threadsafe(
+            _run_and_capture_rich(self.shell, code, self._exec_count), loop,
+        )
 
     def wrap_qt(self, obj):
         return self._jupyter.wrap_qt(obj)
