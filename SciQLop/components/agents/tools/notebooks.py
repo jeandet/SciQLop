@@ -94,7 +94,35 @@ def _render_cell(index: int, cell) -> List[str]:
         body = f"````markdown\n{src}\n````"
     else:
         body = f"```\n{src}\n```"
-    return [header, "", body, ""]
+    parts = [header, "", body]
+    if kind == "code":
+        parts += _render_outputs(cell.get("outputs", []))
+    parts.append("")
+    return parts
+
+
+_MAX_OUTPUT_CHARS = 2000
+
+
+def _render_outputs(outputs) -> List[str]:
+    if not outputs:
+        return []
+    lines = ["", "**outputs:**"]
+    for o in outputs:
+        ot = o.get("output_type")
+        if ot == "stream":
+            lines.append(f"```\n{str(o.get('text', ''))[:_MAX_OUTPUT_CHARS]}\n```")
+        elif ot in ("execute_result", "display_data"):
+            data = o.get("data", {})
+            if "text/plain" in data:
+                lines.append(f"```\n{str(data['text/plain'])[:_MAX_OUTPUT_CHARS]}\n```")
+            for mime in data:
+                if mime.startswith("image/"):
+                    lines.append(f"[image: {mime}]")
+        elif ot == "error":
+            tb = "\n".join(o.get("traceback", []))[:_MAX_OUTPUT_CHARS]
+            lines.append(f"```\n{o.get('ename', '')}: {o.get('evalue', '')}\n{tb}\n```")
+    return lines
 
 
 def write_cell(rel_path: str, index: int, source: str, cell_type: Optional[str]) -> Dict[str, Any]:
