@@ -81,6 +81,10 @@ class KernelManager(QObject):
     def push_variables(self, variables: dict):
         self._jupyter.push(variables)
 
+    def interrupt(self) -> None:
+        """Raise KeyboardInterrupt in the kernel thread to stop a running cell."""
+        self._jupyter.interrupt()
+
     def submit_cell(self, code: str) -> concurrent.futures.Future:
         """Schedule ``code`` on the kernel thread — where cells run — and return a
         Future resolving to a captured-output dict (stdout/stderr/result/success/
@@ -88,7 +92,7 @@ class KernelManager(QObject):
         stays responsive even while the cell blocks (e.g. a slow data fetch).
         Await it from the GUI loop via ``asyncio.wrap_future``.
         """
-        loop = self._jupyter._kernel_thread.loop
+        loop = self._jupyter.kernel_thread.loop
         if loop is None:
             raise RuntimeError("kernel thread is not running")
         return asyncio.run_coroutine_threadsafe(_run_and_capture(self.shell, code), loop)
