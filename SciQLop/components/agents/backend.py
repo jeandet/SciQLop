@@ -19,6 +19,9 @@ from .chat import ChatMessage, ImageBlock, TextBlock, ThinkingBlock
 
 StreamBlock = TextBlock | ThinkingBlock | ImageBlock
 ConfirmCallback = Callable[[str, dict], Awaitable[bool]]
+# questions: list of {question, header, options:[{label, description}], multiSelect}
+# returns: {question_text: chosen_label | [chosen_labels]}
+AskQuestionCallback = Callable[[list], Awaitable[dict]]
 
 
 @dataclass
@@ -28,6 +31,7 @@ class BackendContext:
     tempdir: Path
     confirm_cb: ConfirmCallback
     allow_writes: bool = False
+    ask_question_cb: Optional[AskQuestionCallback] = None
 
 
 @dataclass

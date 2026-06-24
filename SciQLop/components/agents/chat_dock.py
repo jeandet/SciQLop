@@ -192,6 +192,7 @@ class AgentChatDock(QWidget):
             tempdir=be_tempdir,
             confirm_cb=self._confirm_tool_call,
             allow_writes=self._allow_writes,
+            ask_question_cb=self._ask_question,
         )
         backend = create_backend(name, ctx)
         return _AgentSession(backend=backend)
@@ -408,6 +409,25 @@ class AgentChatDock(QWidget):
         box.finished.connect(_on_finished)
         box.open()
         return await future
+
+    async def _ask_question(self, questions: list) -> dict:
+        """Render the model's AskUserQuestion inline and await the user's answers."""
+        from .chat.question_card import QuestionCard
+
+        card = QuestionCard(questions, self)
+        future: asyncio.Future = asyncio.Future()
+
+        def _on_answered(answers: dict) -> None:
+            if not future.done():
+                future.set_result(answers)
+
+        card.answered.connect(_on_answered)
+        self.layout().addWidget(card)
+        try:
+            return await future
+        finally:
+            card.setParent(None)
+            card.deleteLater()
 
     async def _refresh_completions(self) -> None:
         if self._current is None:
