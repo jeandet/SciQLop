@@ -14,6 +14,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -69,6 +70,11 @@ class AgentChatDock(QWidget):
         self._reset_btn = QPushButton("New session")
         self._reset_btn.clicked.connect(self._on_reset)
         header.addWidget(self._reset_btn)
+
+        self._export_btn = QPushButton("Export ⤓")
+        self._export_btn.setToolTip("Save this transcript as a Markdown file.")
+        self._export_btn.clicked.connect(self._on_export)
+        header.addWidget(self._export_btn)
 
         self._interactive: tuple = ()
 
@@ -428,6 +434,24 @@ class AgentChatDock(QWidget):
         finally:
             card.setParent(None)
             card.deleteLater()
+
+    def _on_export(self) -> None:
+        if self._current is None:
+            return
+        messages = self._sessions[self._current].messages
+        if not messages:
+            QMessageBox.information(self, "Export transcript", "Nothing to export yet.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export transcript", f"{self._current}.md", "Markdown (*.md)")
+        if not path:
+            return
+        from .chat.export_md import transcript_to_markdown
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(transcript_to_markdown(messages, title=self._current))
+        except OSError as e:
+            QMessageBox.warning(self, "Export failed", str(e))
 
     async def _refresh_completions(self) -> None:
         if self._current is None:
