@@ -5,11 +5,12 @@ dock once it knows which backend is active.
 """
 from __future__ import annotations
 
+import json as _json
 import uuid as _uuid
 from dataclasses import dataclass, field
 from html import escape as _html_escape
 from pathlib import Path
-from typing import List, Literal, Union
+from typing import List, Literal, Optional, Union
 
 from PySide6.QtCore import QMimeData, QStringListModel, Qt, QTimer, QUrl
 from PySide6.QtGui import (
@@ -56,7 +57,65 @@ class ImageBlock:
     path: str
 
 
-ContentBlock = Union[TextBlock, ThinkingBlock, ImageBlock]
+@dataclass
+class ToolActivityBlock:
+    """One tool call the agent made. ``result`` is filled in when the matching
+    tool_result arrives (correlated by ``tool_use_id``). ``id`` is stable across
+    re-renders so the collapse state survives."""
+    tool_name: str = ""
+    tool_input: dict = field(default_factory=dict)
+    result: Optional[str] = None
+    tool_use_id: str = ""
+    id: str = field(default_factory=lambda: _uuid.uuid4().hex)
+
+
+ContentBlock = Union[TextBlock, ThinkingBlock, ImageBlock, ToolActivityBlock]
+
+
+def _input_one_line(tool_input: dict, cap: int = 80) -> str:
+    """A compact single-line preview of a tool call's arguments."""
+    if not tool_input:
+        return ""
+    parts = []
+    for k, v in tool_input.items():
+        sval = v if isinstance(v, str) else _json.dumps(v, default=str)
+        sval = " ".join(str(sval).split())
+        parts.append(f"{k}={sval}")
+    s = ", ".join(parts)
+    return s if len(s) <= cap else s[: cap - 1] + "…"
+
+
+def activity_group_html(blocks: List["ToolActivityBlock"], level: int,
+                        expanded: bool, group_id: str, running: bool = False) -> str:
+    """Render a run of tool calls as a collapsible dim block.
+
+    Collapsed: a single summary line. Expanded: one line per call, with an input
+    preview at level>=2 and a result summary at level>=3. ``level`` is 1-3."""
+    n = len(blocks)
+    arrow = "▾" if expanded else "▸"
+    if running and blocks:
+        head_text = f"● {_html_escape(blocks[-1].tool_name)}… ({n})"
+    else:
+        head_text = f"🔧 {n} step{'s' if n != 1 else ''}"
+    head = (f'<p style="color:#888888;margin:2px 0">'
+            f'<a href="toggle:{group_id}" style="color:#888888;text-decoration:none">'
+            f'{head_text} {arrow}</a></p>')
+    if not expanded:
+        return head
+    out = [head]
+    for b in blocks:
+        line = f"&nbsp;&nbsp;▸ {_html_escape(b.tool_name)}"
+        if level >= 2:
+            preview = _input_one_line(b.tool_input)
+            if preview:
+                line += f' · <span style="color:#9a9a9a">{_html_escape(preview)}</span>'
+        out.append(f'<p style="color:#888888;margin:0 0 0 0">{line}</p>')
+        if level >= 3 and b.result:
+            res = b.result.strip()
+            res = res if len(res) <= 200 else res[:199] + "…"
+            out.append('<p style="color:#888888;margin:0">'
+                       f'&nbsp;&nbsp;&nbsp;&nbsp;↳ {_html_escape(res)}</p>')
+    return "".join(out)
 
 
 @dataclass
@@ -85,10 +144,27 @@ class TranscriptView(QTextBrowser):
         self._image_max_width_px = 720
         self._role_labels = dict(_DEFAULT_ROLE_LABEL)
         self._pending_messages: List[ChatMessage] | None = None
+        self._last_messages: List[ChatMessage] = []
+        self._tool_verbosity = 1
+        self._expanded: set[str] = set()
         self._render_timer = QTimer(self)
         self._render_timer.setSingleShot(True)
         self._render_timer.setInterval(_RENDER_INTERVAL_MS)
         self._render_timer.timeout.connect(self._flush)
+        self.anchorClicked.connect(self._on_anchor_clicked)
+
+    def set_tool_verbosity(self, level: int) -> None:
+        level = max(1, min(3, int(level)))
+        if level != self._tool_verbosity:
+            self._tool_verbosity = level
+            self.render_messages(self._last_messages)
+
+    def _on_anchor_clicked(self, url: QUrl) -> None:
+        ref = url.toString()
+        if ref.startswith("toggle:"):
+            gid = ref[len("toggle:"):]
+            self._expanded.symmetric_difference_update({gid})
+            self.render_messages(self._last_messages)
 
     def set_assistant_label(self, label: str) -> None:
         self._role_labels["assistant"] = label or "Assistant"
@@ -107,6 +183,7 @@ class TranscriptView(QTextBrowser):
         if messages is None:
             return
         self._pending_messages = None
+        self._last_messages = messages
         doc = QTextDocument()
         doc.setDefaultStyleSheet(
             "h4 { margin-top: 14px; margin-bottom: 4px; }"
@@ -128,7 +205,22 @@ class TranscriptView(QTextBrowser):
         color = _ROLE_COLOR.get(msg.role, "#444")
         cursor.insertHtml(f'<h4 style="color:{color}">{label}</h4>')
 
-        for block in msg.blocks:
+        blocks = msg.blocks
+        running = not msg.done
+        i = 0
+        while i < len(blocks):
+            block = blocks[i]
+            if isinstance(block, ToolActivityBlock):
+                run = []
+                while i < len(blocks) and isinstance(blocks[i], ToolActivityBlock):
+                    run.append(blocks[i])
+                    i += 1
+                group_id = run[0].id
+                cursor.insertBlock()
+                cursor.insertHtml(activity_group_html(
+                    run, self._tool_verbosity, group_id in self._expanded,
+                    group_id, running=running))
+                continue
             if isinstance(block, TextBlock):
                 if block.text:
                     self._insert_markdown(cursor, block.text)
@@ -137,6 +229,7 @@ class TranscriptView(QTextBrowser):
                     self._insert_thinking(cursor, block.text)
             elif isinstance(block, ImageBlock):
                 self._insert_image(cursor, doc, block.path)
+            i += 1
 
     @staticmethod
     def _insert_markdown(cursor: QTextCursor, markdown: str) -> None:

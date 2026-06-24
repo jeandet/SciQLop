@@ -15,9 +15,9 @@ from typing import (
     runtime_checkable,
 )
 
-from .chat import ChatMessage, ImageBlock, TextBlock, ThinkingBlock
+from .chat import ChatMessage, ImageBlock, TextBlock, ThinkingBlock, ToolActivityBlock
 
-StreamBlock = TextBlock | ThinkingBlock | ImageBlock
+StreamBlock = TextBlock | ThinkingBlock | ImageBlock | ToolActivityBlock
 ConfirmCallback = Callable[[str, dict], Awaitable[bool]]
 # questions: list of {question, header, options:[{label, description}], multiSelect}
 # returns: {question_text: chosen_label | [chosen_labels]}

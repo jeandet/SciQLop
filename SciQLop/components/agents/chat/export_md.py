@@ -9,7 +9,14 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from .view import ChatMessage, ImageBlock, TextBlock, ThinkingBlock
+from .view import (
+    ChatMessage,
+    ImageBlock,
+    TextBlock,
+    ThinkingBlock,
+    ToolActivityBlock,
+    _input_one_line,
+)
 
 _ROLE = {"user": "You", "assistant": "Claude", "error": "Error"}
 
@@ -24,13 +31,14 @@ def _block_md(block: Any) -> List[str]:
         return [(block.text or "").rstrip()]
     if isinstance(block, ImageBlock):
         return [f"![image]({block.path})"]
-    # Tool-activity blocks (added with the activity feature) expose tool_name /
-    # steps; render them collapsed so the export stays readable.
-    steps = getattr(block, "steps", None)
-    if steps is not None:
-        out = ["<details>", f"<summary>🔧 {len(steps)} steps</summary>", ""]
-        out += [f"- {s}" for s in steps]
-        out += ["", "</details>"]
+    if isinstance(block, ToolActivityBlock):
+        line = f"- 🔧 `{block.tool_name}`"
+        preview = _input_one_line(block.tool_input, cap=120)
+        if preview:
+            line += f" · {preview}"
+        out = [line]
+        if block.result:
+            out.append(f"  - ↳ {block.result.strip()[:200]}")
         return out
     return []
 

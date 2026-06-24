@@ -33,6 +33,7 @@ from .chat import (
     ImageBlock,
     TextBlock,
     ThinkingBlock,
+    ToolActivityBlock,
     TranscriptView,
 )
 from .registry import available_backends, create_backend
@@ -101,6 +102,14 @@ class AgentChatDock(QWidget):
         self._writes_toggle.stateChanged.connect(self._on_writes_toggled)
         header.addWidget(self._writes_toggle)
 
+        self._verbosity_combo = QComboBox()
+        self._verbosity_combo.addItems(
+            ["Activity: minimal", "Activity: + inputs", "Activity: + results"])
+        self._verbosity_combo.setToolTip(
+            "How much of the agent's tool activity to show in the chat.")
+        self._verbosity_combo.currentIndexChanged.connect(self._on_verbosity_changed)
+        header.addWidget(self._verbosity_combo)
+
         self._status_label = QLabel("")
         self._status_label.setStyleSheet("color: gray;")
         header.addWidget(self._status_label, 1)
@@ -111,6 +120,7 @@ class AgentChatDock(QWidget):
 
         self._transcript = TranscriptView(self._splitter)
         self._splitter.addWidget(self._transcript)
+        self._init_tool_verbosity()
 
         input_panel = QWidget(self._splitter)
         input_row = QHBoxLayout(input_panel)
@@ -388,6 +398,18 @@ class AgentChatDock(QWidget):
                 message.blocks.append(block)
         elif isinstance(block, ImageBlock):
             message.blocks.append(block)
+        elif isinstance(block, ToolActivityBlock):
+            # a result-only block (tool_use_id set, result filled) merges into the
+            # matching tool call; otherwise it's a new call to append.
+            if block.result is not None and block.tool_use_id:
+                match = next(
+                    (b for b in message.blocks
+                     if isinstance(b, ToolActivityBlock)
+                     and b.tool_use_id == block.tool_use_id), None)
+                if match is not None:
+                    match.result = block.result
+                    return
+            message.blocks.append(block)
 
     async def _confirm_tool_call(self, tool_name: str, tool_input: dict) -> bool:
         box = QMessageBox(self)
@@ -452,6 +474,21 @@ class AgentChatDock(QWidget):
                 f.write(transcript_to_markdown(messages, title=self._current))
         except OSError as e:
             QMessageBox.warning(self, "Export failed", str(e))
+
+    def _init_tool_verbosity(self) -> None:
+        from .settings import AgentChatSettings
+        level = AgentChatSettings().tool_verbosity
+        self._verbosity_combo.blockSignals(True)
+        self._verbosity_combo.setCurrentIndex(max(0, min(2, level - 1)))
+        self._verbosity_combo.blockSignals(False)
+        self._transcript.set_tool_verbosity(level)
+
+    def _on_verbosity_changed(self, index: int) -> None:
+        level = index + 1
+        self._transcript.set_tool_verbosity(level)
+        from .settings import AgentChatSettings
+        with AgentChatSettings() as s:
+            s.tool_verbosity = level
 
     async def _refresh_completions(self) -> None:
         if self._current is None:

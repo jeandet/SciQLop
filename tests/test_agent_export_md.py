@@ -33,3 +33,16 @@ def test_transcript_to_markdown_handles_empty_thinking_and_images(qtbot):
     ])
     assert "![image](/tmp/plot.png)" in md
     assert ">" not in md.split("## Claude", 1)[1]       # no empty blockquote emitted
+
+
+def test_export_renders_tool_activity(qtbot):
+    from SciQLop.components.agents.chat import ChatMessage, ToolActivityBlock
+    from SciQLop.components.agents.chat.export_md import transcript_to_markdown
+    md = transcript_to_markdown([
+        ChatMessage(role="assistant", blocks=[
+            ToolActivityBlock(tool_name="exec_python", tool_input={"code": "1+1"},
+                              result="2"),
+        ]),
+    ])
+    assert "🔧 `exec_python`" in md
+    assert "code=1+1" in md and "↳ 2" in md

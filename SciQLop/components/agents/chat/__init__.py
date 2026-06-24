@@ -11,6 +11,7 @@ from .view import (
     ImageBlock,
     TextBlock,
     ThinkingBlock,
+    ToolActivityBlock,
     TranscriptView,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     "ImageBlock",
     "TextBlock",
     "ThinkingBlock",
+    "ToolActivityBlock",
     "TranscriptView",
     "write_b64_image",
 ]
