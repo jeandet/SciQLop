@@ -1,5 +1,6 @@
 from typing import Optional, List, Union
 
+import math
 import time as _time
 import numpy as np
 from PySide6.QtCore import QMimeData, QObject, QTimer, Signal
@@ -698,6 +699,38 @@ class _CallbackErrorOverlay(QObject):
             self._plot.overlay().clear_message()
 
 
+def _is_plain_xy_plot(plot) -> bool:
+    """A plain XY plot whose X axis carries data, not time.
+
+    Excludes time-series plots (X axis already *is* the synced time axis, so
+    callback graphs are time-driven by construction) and projection plots
+    (own time machinery). Uses the C++ class name so it also works on
+    ``SciQLopPlotInterfacePtr`` handles returned by the panel.
+    """
+    return plot.metaObject().className() not in (
+        "SciQLopTimeSeriesPlot", "SciQLopNDProjectionPlot")
+
+
+def _time_sync_callback_graph(plot, graph) -> None:
+    """Re-point a callback graph in a plain XY plot to observe the panel's
+    time axis instead of the plot's own (data) X axis, so ``f(start, stop)``
+    is driven by the panel time window.
+
+    ``observe()`` clears its previous observer connections first, so this
+    replaces the default frequency-axis wiring rather than stacking on it.
+    No-op for time-series / projection plots, and for graphs that are not
+    callback graphs (``observe`` is only defined on function-graph types).
+    """
+    if not _is_plain_xy_plot(plot):
+        return
+    if not hasattr(graph, "observe"):
+        return
+    graph.observe(plot.time_axis())
+    time_range = plot.time_axis().range()
+    if math.isfinite(time_range.start()) and math.isfinite(time_range.stop()):
+        graph.set_range(time_range)
+
+
 def plot_function(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjectionPlot], f, **kwargs):
     target, existing_plot = _resolve_plot_target(p, kwargs)
     reporter = _CallbackErrorOverlay(f)
@@ -707,6 +740,7 @@ def plot_function(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjecti
     try:
         plot, graph = r
         reporter.attach(plot)
+        _time_sync_callback_graph(plot, graph)
         panel_name = target.windowTitle() if hasattr(target, "windowTitle") else ""
         plots = target.plots() if hasattr(target, "plots") else []
         plot_index = next((i for i, _p in enumerate(plots)
