@@ -33,3 +33,50 @@ def test_xy_function_plot_is_time_synced_to_panel(plot_panel, qtbot):
 
     assert seen, "XY function callback was not invoked on a panel time-range change"
     assert seen[-1] == pytest.approx((t0 + 200, t0 + 300))
+
+
+def test_timeseries_function_plot_still_time_synced(plot_panel, qtbot):
+    """The no-op path: time-series function plots already observe the time
+    axis (their X axis), and must keep refreshing on time changes."""
+    from SciQLop.core import TimeRange
+
+    seen = []
+
+    def line(start, stop):
+        seen.append((float(start), float(stop)))
+        t = np.linspace(start, stop, 10)
+        return t, np.sin(t)
+
+    plot_panel.plot_function(line)  # default plot_type=TimeSeries
+
+    seen.clear()
+    t0 = 1.7e9
+    plot_panel.time_range = TimeRange(t0, t0 + 50)
+    qtbot.wait(80)
+
+    assert seen, "time-series function callback not invoked on time change"
+    assert seen[-1] == pytest.approx((t0, t0 + 50))
+
+
+def test_gate_excludes_timeseries_and_projection(qapp):
+    """`_is_plain_xy_plot` keys off the C++ class name so it works on both
+    concrete plots and SciQLopPlotInterfacePtr handles."""
+    from SciQLop.components.plotting.ui.time_sync_panel import _is_plain_xy_plot
+
+    class _FakeMeta:
+        def __init__(self, name):
+            self._name = name
+
+        def className(self):
+            return self._name
+
+    class _FakePlot:
+        def __init__(self, name):
+            self._meta = _FakeMeta(name)
+
+        def metaObject(self):
+            return self._meta
+
+    assert _is_plain_xy_plot(_FakePlot("SciQLopPlot")) is True
+    assert _is_plain_xy_plot(_FakePlot("SciQLopTimeSeriesPlot")) is False
+    assert _is_plain_xy_plot(_FakePlot("SciQLopNDProjectionPlot")) is False
