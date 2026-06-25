@@ -50,7 +50,7 @@ dependencies = [
     "ipython",
     "ipywidgets",
     "jupyterlab_widgets",
-    "jupyqt>=0.5.2",
+    "jupyqt>=0.6.1",
     "matplotlib==3.10.8",
     "qasync",
     "jinja2",
