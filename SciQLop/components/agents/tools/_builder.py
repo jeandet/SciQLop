@@ -109,6 +109,17 @@ def _error_content(msg: str) -> Dict[str, Any]:
     return {"content": [{"type": "text", "text": msg}]}
 
 
+def _format_install_result(result: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    if result.get("installed"):
+        parts.append(f"installed and recorded: {', '.join(result['installed'])}")
+    if result.get("already_present"):
+        parts.append(f"already present: {', '.join(result['already_present'])}")
+    if not result.get("ok"):
+        parts.append(f"error: {result.get('error', '')}")
+    return "\n".join(parts) if parts else "ok (nothing to do)"
+
+
 def _png_to_image_content(path: str) -> Dict[str, Any]:
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
@@ -377,6 +388,37 @@ def _interrupt_kernel_tool() -> Dict[str, Any]:
     )
 
 
+def _install_package_tool() -> Dict[str, Any]:
+    def _run(payload: Dict[str, Any]) -> Any:
+        from SciQLop.user_api.packages import install_packages
+        packages = [str(p) for p in (payload.get("packages") or [])]
+        if not packages:
+            return _error_content("no packages given")
+        return _format_install_result(install_packages(*packages))
+
+    return _text_tool(
+        "sciqlop_install_package",
+        (
+            "Install one or more Python packages into the active workspace's venv "
+            "(via uv) AND record them in the workspace manifest, so they persist "
+            "across restarts and survive venv rebuilds. Use this instead of running "
+            "`pip install` in sciqlop_exec_python — raw pip installs are NOT recorded "
+            "and are wiped when the venv is recreated. Pass PEP 508 specifiers, e.g. "
+            "['astropy', 'scipy>=1.11']."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "packages": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["packages"],
+        },
+        _run,
+        gated=True,
+        thread=True,  # uv install blocks; keep it off the GUI event loop
+    )
+
+
 def _write_tools(main_window) -> List[Dict[str, Any]]:
     @on_main_thread
     def _set_time_range(name: Optional[str], start: float, stop: float):
@@ -408,7 +450,8 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
         gated=True,
     )
 
-    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
+    return [set_time_range, _create_panel_tool(main_window), _exec_python_tool(),
+            _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
