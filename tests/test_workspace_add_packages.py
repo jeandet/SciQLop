@@ -56,3 +56,29 @@ def test_failed_install_leaves_manifest_untouched(tmp_path):
     assert "No match" in result["error"]
     assert ws._manifest.requires == []
     assert WorkspaceManifest.load(tmp_path / "workspace.sciqlop").requires == []
+
+
+def test_repin_replaces_existing_entry(tmp_path):
+    # Recorded "scipy"; installing "scipy>=1.11" re-pins it (last-wins), so the
+    # manifest holds only the new spec, not both.
+    ws = _make_ws(tmp_path, requires=["scipy"])
+    ws._uv_install = lambda pkgs: SimpleNamespace(returncode=0, stdout="", stderr="")
+    result = ws.add_packages(["scipy>=1.11"])
+    assert result["installed"] == ["scipy>=1.11"]
+    assert ws._manifest.requires == ["scipy>=1.11"]
+    assert WorkspaceManifest.load(tmp_path / "workspace.sciqlop").requires == ["scipy>=1.11"]
+
+
+def test_no_duplicate_same_package_within_one_call(tmp_path):
+    ws = _make_ws(tmp_path)
+    ws._uv_install = lambda pkgs: SimpleNamespace(returncode=0, stdout="", stderr="")
+    ws.add_packages(["scipy", "scipy>=1.11"])
+    assert ws._manifest.requires == ["scipy>=1.11"]
+
+
+def test_failed_repin_leaves_existing_entry_untouched(tmp_path):
+    ws = _make_ws(tmp_path, requires=["scipy"])
+    ws._uv_install = lambda pkgs: SimpleNamespace(returncode=1, stdout="", stderr="boom")
+    result = ws.add_packages(["scipy>=1.11"])
+    assert result["ok"] is False
+    assert ws._manifest.requires == ["scipy"]

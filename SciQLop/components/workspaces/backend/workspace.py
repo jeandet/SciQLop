@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, Signal
 
 from SciQLop.components.workspaces.backend.workspace_manifest import WorkspaceManifest
 from SciQLop.components.workspaces.backend.uv import uv_command
+from SciQLop.components.workspaces.backend.workspace_project import _deduplicate_requirements
 from SciQLop.components.sciqlop_logging import getLogger
 
 log = getLogger(__name__)
@@ -66,6 +67,10 @@ class Workspace(QObject):
             return {"ok": False, "installed": [],
                     "already_present": already_present, "error": result.stderr}
         self._manifest.requires.extend(to_install)
+        # Collapse any same-package duplicates (e.g. "scipy" + "scipy>=1.11"),
+        # last spec wins — same canonical-name rule the launcher applies when it
+        # regenerates pyproject.toml, so the manifest matches the resolved venv.
+        self._manifest.requires[:] = _deduplicate_requirements(self._manifest.requires)
         self._manifest.save(self._manifest_path)
         return {"ok": True, "installed": to_install,
                 "already_present": already_present, "error": ""}
