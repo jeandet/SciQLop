@@ -49,28 +49,26 @@ class Workspace(QObject):
     def _uv_install(self, packages: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run(uv_command("pip", "install", *packages), capture_output=True, text=True)
 
-    def install_dependency(self, dep: str) -> bool:
-        if dep in self._manifest.requires:
-            return True
-        result = self._uv_install([dep])
-        if result.returncode != 0:
-            log.error("Failed to install %s: %s", dep, result.stderr)
-            return False
-        self._manifest.requires.append(dep)
-        self._manifest.save(self._manifest_path)
-        return True
+    def add_packages(self, specs: list[str]) -> dict:
+        """Install packages into the workspace venv (uv) and record the newly
+        added ones in the manifest so they persist across restarts and venv
+        rebuilds. Synchronous/blocking — call off the GUI thread.
 
-    def install_dependencies(self, deps: list[str]) -> bool:
-        added = [d for d in deps if d not in self._manifest.requires]
-        if not added:
-            return True
-        result = self._uv_install(added)
+        Returns {"ok", "installed", "already_present", "error"}."""
+        already_present = [s for s in specs if s in self._manifest.requires]
+        to_install = [s for s in specs if s not in self._manifest.requires]
+        if not to_install:
+            return {"ok": True, "installed": [],
+                    "already_present": already_present, "error": ""}
+        result = self._uv_install(to_install)
         if result.returncode != 0:
-            log.error("Failed to install %s: %s", added, result.stderr)
-            return False
-        self._manifest.requires.extend(added)
+            log.error("Failed to install %s: %s", to_install, result.stderr)
+            return {"ok": False, "installed": [],
+                    "already_present": already_present, "error": result.stderr}
+        self._manifest.requires.extend(to_install)
         self._manifest.save(self._manifest_path)
-        return True
+        return {"ok": True, "installed": to_install,
+                "already_present": already_present, "error": ""}
 
     def record_dependencies(self, deps: list[str]):
         """Save deps to manifest without installing (caller already installed)."""
