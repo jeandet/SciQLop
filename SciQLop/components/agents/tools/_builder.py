@@ -51,6 +51,8 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _api_reference_tool(),
         _speasy_inventory_tool(),
         _products_tree_tool(),
+        _search_literature_tool(),
+        _fetch_paper_tool(),
         _wait_for_plot_data_tool(main_window),
         _list_notebooks_tool(),
         _read_notebook_tool(),
@@ -250,6 +252,49 @@ def _products_tree_tool() -> Dict[str, Any]:
             "required": [],
         },
         lambda p: products_tree.render(str(p.get("path", ""))),
+    )
+
+
+def _search_literature_tool() -> Dict[str, Any]:
+    from . import literature
+    return _text_tool(
+        "sciqlop_search_literature",
+        (
+            "Search the scientific literature for papers. `source` is 'arxiv' "
+            "(free), 'ads' (NASA ADS — needs a configured token), or 'both' "
+            "(default). Returns title, authors, year, identifier (arXiv id / ADS "
+            "bibcode), DOI, URL and a short abstract. Use sciqlop_fetch_paper to "
+            "read a paper's full text. Cite what you use."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "source": {"type": "string", "enum": ["arxiv", "ads", "both"]},
+                "max_results": {"type": "integer"},
+            },
+            "required": ["query"],
+        },
+        lambda p: literature.search_literature(
+            str(p["query"]), str(p.get("source", "both")), int(p.get("max_results", 5))),
+        thread=True,
+    )
+
+
+def _fetch_paper_tool() -> Dict[str, Any]:
+    from . import fulltext
+    return _text_tool(
+        "sciqlop_fetch_paper",
+        (
+            "Fetch the full text of an arXiv paper by id or URL (e.g. '2401.01234' "
+            "or an arxiv.org link). Returns cleaned text from the HTML version, "
+            "falling back to the PDF. Long papers are truncated — ask for a "
+            "specific section if needed."
+        ),
+        {"type": "object", "properties": {"id_or_url": {"type": "string"}},
+         "required": ["id_or_url"]},
+        lambda p: fulltext.fetch_paper(str(p["id_or_url"])),
+        thread=True,
     )
 
 
