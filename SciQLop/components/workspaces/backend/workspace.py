@@ -70,13 +70,6 @@ class Workspace(QObject):
         return {"ok": True, "installed": to_install,
                 "already_present": already_present, "error": ""}
 
-    def record_dependencies(self, deps: list[str]):
-        """Save deps to manifest without installing (caller already installed)."""
-        added = [d for d in deps if d not in self._manifest.requires]
-        if added:
-            self._manifest.requires.extend(added)
-            self._manifest.save(self._manifest_path)
-
     def add_files(self, files: list[str], destination: str = ""):
         for f in files:
             dest = os.path.join(self.workspace_dir, destination, os.path.basename(f))

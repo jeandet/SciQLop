@@ -8,7 +8,7 @@ from IPython.core.error import UsageError
 SUBCOMMANDS = {
     "status": "Show workspace name, path, and summary",
     "deps": "List recorded dependencies",
-    "install": "Install packages and record in manifest (alias for %install)",
+    "install": "Install packages and record in the manifest (persists across restarts)",
     "plugins": "List plugin overrides (add/remove)",
     "examples": "List available examples",
     "add-example": "Copy an example into the workspace",
