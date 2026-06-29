@@ -38,6 +38,7 @@ classifiers = [
 dependencies = [
     "SciQLopPlots==0.29.0",
     "cloudpickle",
+    "defusedxml",
     "speasy>=1.6.1",
     "qtconsole",
     "humanize",
