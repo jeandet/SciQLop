@@ -348,20 +348,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 Create `tests/test_fulltext.py`:
 
 ```python
-"""fulltext.py: arXiv id extraction, HTML→text, PDF→text, fetch orchestration."""
-import SciQLop.components.agents.tools.fulltext as ft
+"""fulltext.py: arXiv id extraction, HTML→text, PDF→text, fetch orchestration.
 
-
-def test_extract_arxiv_id_from_url_and_bare():
-    assert ft._extract_arxiv_id("https://arxiv.org/abs/2401.01234v2") == "2401.01234v2"
-    assert ft._extract_arxiv_id("2401.01234") == "2401.01234"
-    assert ft._extract_arxiv_id("astro-ph/0601001") == "astro-ph/0601001"
-    assert ft._extract_arxiv_id("not an id") == ""
-
-
-def test_html_to_text_strips_markup_and_scripts():
-    html = "<html><head><style>x{}</style></head><body><p>Hello</p><script>bad()</script><p>world</p></body></html>"
-    assert ft._html_to_text(html) == "Hello world"
+Importing the agents package needs a QApplication (ProductsModel static), so each
+test takes pytest-qt's `qtbot` and imports the module inside (deferred), matching
+tests/test_install_package_tool.py.
+"""
 
 
 class _Resp:
@@ -372,14 +364,36 @@ class _Resp:
         self.headers = {"Content-Type": ctype}
 
 
-def test_fetch_paper_uses_html(monkeypatch):
+def _ft(qtbot):
+    import SciQLop.components.agents.tools.fulltext as ft
+    return ft
+
+
+def test_extract_arxiv_id_from_url_and_bare(qtbot):
+    ft = _ft(qtbot)
+    assert ft._extract_arxiv_id("https://arxiv.org/abs/2401.01234v2") == "2401.01234v2"
+    assert ft._extract_arxiv_id("2401.01234") == "2401.01234"
+    assert ft._extract_arxiv_id("astro-ph/0601001") == "astro-ph/0601001"
+    assert ft._extract_arxiv_id("not an id") == ""
+
+
+def test_html_to_text_strips_markup_and_scripts(qtbot):
+    ft = _ft(qtbot)
+    html = "<html><head><style>x{}</style></head><body><p>Hello</p><script>bad()</script><p>world</p></body></html>"
+    assert ft._html_to_text(html) == "Hello world"
+
+
+def test_fetch_paper_uses_html(qtbot, monkeypatch):
+    ft = _ft(qtbot)
     body = "<html><body><p>" + ("Full body text. " * 50) + "</p></body></html>"
     monkeypatch.setattr(ft.http, "get", lambda url, timeout=0: _Resp(text=body, ctype="text/html"))
     out = ft._fetch_paper_impl("2401.01234")
     assert "Full body text." in out["content"][0]["text"]
 
 
-def test_fetch_paper_pdf_fallback(monkeypatch):
+def test_fetch_paper_pdf_fallback(qtbot, monkeypatch):
+    ft = _ft(qtbot)
+
     def _get(url, timeout=0):
         if "/pdf/" in url:
             return _Resp(ok=True, data=b"%PDF-fake", ctype="application/pdf")
@@ -390,7 +404,8 @@ def test_fetch_paper_pdf_fallback(monkeypatch):
     assert "Extracted PDF text body." in out["content"][0]["text"]
 
 
-def test_fetch_paper_unresolvable():
+def test_fetch_paper_unresolvable(qtbot):
+    ft = _ft(qtbot)
     out = ft._fetch_paper_impl("garbage")
     assert "could not resolve" in out["content"][0]["text"].lower()
 ```
@@ -536,19 +551,23 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 Create `tests/test_literature_tools.py`:
 
 ```python
-"""sciqlop_search_literature / sciqlop_fetch_paper tool registration."""
+"""sciqlop_search_literature / sciqlop_fetch_paper tool registration.
+
+Importing _builder needs a QApplication (ProductsModel static), so each test
+takes pytest-qt's `qtbot` and imports inside (deferred), matching
+tests/test_install_package_tool.py.
+"""
 import asyncio
 from unittest.mock import MagicMock
 
-import SciQLop.components.agents.tools._builder as builder
 
-
-def _tool(name):
+def _tool(qtbot, name):
+    import SciQLop.components.agents.tools._builder as builder
     return next(t for t in builder.build_sciqlop_tools(MagicMock()) if t["name"] == name)
 
 
-def test_search_tool_registered_ungated_with_schema():
-    t = _tool("sciqlop_search_literature")
+def test_search_tool_registered_ungated_with_schema(qtbot):
+    t = _tool(qtbot, "sciqlop_search_literature")
     assert t.get("gated", False) is False
     props = t["input_schema"]["properties"]
     assert props["query"]["type"] == "string"
@@ -556,17 +575,17 @@ def test_search_tool_registered_ungated_with_schema():
     assert t["input_schema"]["required"] == ["query"]
 
 
-def test_fetch_tool_registered():
-    t = _tool("sciqlop_fetch_paper")
+def test_fetch_tool_registered(qtbot):
+    t = _tool(qtbot, "sciqlop_fetch_paper")
     assert t.get("gated", False) is False
     assert t["input_schema"]["required"] == ["id_or_url"]
 
 
-def test_search_tool_handler_delegates(monkeypatch):
+def test_search_tool_handler_delegates(qtbot, monkeypatch):
     import SciQLop.components.agents.tools.literature as lit
     monkeypatch.setattr(lit, "search_literature",
                         lambda q, s, n: {"content": [{"type": "text", "text": f"q={q} s={s} n={n}"}]})
-    out = asyncio.run(_tool("sciqlop_search_literature")["handler"]({"query": "recon", "source": "arxiv", "max_results": 3}))
+    out = asyncio.run(_tool(qtbot, "sciqlop_search_literature")["handler"]({"query": "recon", "source": "arxiv", "max_results": 3}))
     assert out["content"][0]["text"] == "q=recon s=arxiv n=3"
 ```
 
