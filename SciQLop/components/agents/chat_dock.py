@@ -9,13 +9,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -63,6 +64,11 @@ class AgentChatDock(QWidget):
         self._allow_writes = False
         self._turn_task: Optional[asyncio.Task] = None
         self._bg_tasks: set[asyncio.Task] = set()
+        self._pending_pane_width = 0
+        self._pane_width_timer = QTimer(self)
+        self._pane_width_timer.setSingleShot(True)
+        self._pane_width_timer.setInterval(400)
+        self._pane_width_timer.timeout.connect(self._persist_pane_width)
 
         self._build_ui()
         self.refresh_backends()
@@ -167,6 +173,7 @@ class AgentChatDock(QWidget):
             self._reset_btn,
             self._writes_toggle,
             self._model_combo,
+            self._sessions_toggle,
         )
 
     def refresh_backends(self) -> None:
@@ -323,7 +330,6 @@ class AgentChatDock(QWidget):
         session = self._sessions.get(self._current)
         if session is None:
             return
-        from PySide6.QtWidgets import QInputDialog
         meta = AgentSessionMeta()
         current = meta.get(session.backend.display_name, session_id).name
         name, ok = QInputDialog.getText(self, "Rename session", "Name:", text=current)
@@ -349,8 +355,13 @@ class AgentChatDock(QWidget):
     def _on_splitter_moved(self, *_args) -> None:
         sizes = self._h_splitter.sizes()
         if sizes and sizes[0] > 0:
+            self._pending_pane_width = int(sizes[0])
+            self._pane_width_timer.start()
+
+    def _persist_pane_width(self) -> None:
+        if self._pending_pane_width > 0:
             with AgentChatSettings() as cfg:
-                cfg.sessions_pane_width = int(sizes[0])
+                cfg.sessions_pane_width = self._pending_pane_width
 
     def _current_supports_sessions(self) -> bool:
         session = self._sessions.get(self._current)
