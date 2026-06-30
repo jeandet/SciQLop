@@ -36,7 +36,10 @@ from .chat import (
     ToolActivityBlock,
     TranscriptView,
 )
+from .chat.session_panel import SessionListPanel
+from .chat.sessions_view import ordered_sessions
 from .registry import available_backends, create_backend
+from .settings import AgentChatSettings, AgentSessionMeta
 from .tools import build_sciqlop_tools
 
 
@@ -84,11 +87,11 @@ class AgentChatDock(QWidget):
         self._backend_combo.currentIndexChanged.connect(self._on_backend_changed)
         header.addWidget(self._backend_combo)
 
-        self._session_combo = QComboBox()
-        self._session_combo.setMinimumWidth(220)
-        self._session_combo.setToolTip("Resume a previous session for this backend.")
-        self._session_combo.currentIndexChanged.connect(self._on_session_picked)
-        header.addWidget(self._session_combo)
+        self._sessions_toggle = QPushButton("☰ Sessions")
+        self._sessions_toggle.setCheckable(True)
+        self._sessions_toggle.setToolTip("Show or hide the session list.")
+        self._sessions_toggle.toggled.connect(self._on_sessions_toggled)
+        header.addWidget(self._sessions_toggle)
 
         self._model_combo = QComboBox()
         self._model_combo.currentIndexChanged.connect(self._on_model_changed)
@@ -142,7 +145,18 @@ class AgentChatDock(QWidget):
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 0)
         self._splitter.setSizes([400, 90])
-        layout.addWidget(self._splitter, 1)
+        self._session_panel = SessionListPanel()
+        self._session_panel.session_selected.connect(self._on_session_selected)
+        self._session_panel.rename_requested.connect(self._on_session_rename)
+        self._session_panel.pin_toggle_requested.connect(self._on_session_pin)
+        self._h_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._h_splitter.addWidget(self._session_panel)
+        self._h_splitter.addWidget(self._splitter)
+        self._h_splitter.setCollapsible(0, True)
+        self._h_splitter.setStretchFactor(1, 1)
+        self._h_splitter.splitterMoved.connect(self._on_splitter_moved)
+        layout.addWidget(self._h_splitter, 1)
+        self._restore_pane_state()
 
         QShortcut(QKeySequence("Ctrl+Return"), self._input, activated=self._on_send)
         QShortcut(QKeySequence("Ctrl+Enter"), self._input, activated=self._on_send)
@@ -152,7 +166,6 @@ class AgentChatDock(QWidget):
             self._send_btn,
             self._reset_btn,
             self._writes_toggle,
-            self._session_combo,
             self._model_combo,
         )
 
@@ -247,15 +260,17 @@ class AgentChatDock(QWidget):
         self._model_combo.blockSignals(False)
 
     def _populate_session_list(self, backend: AgentBackend) -> None:
-        self._session_combo.blockSignals(True)
-        self._session_combo.clear()
-        self._session_combo.setVisible(backend.supports_sessions)
-        if backend.supports_sessions:
-            self._session_combo.addItem("↻ Resume session…", None)
-            for entry in backend.list_sessions():
-                self._session_combo.addItem(entry.label, entry.id)
-        self._session_combo.setCurrentIndex(0)
-        self._session_combo.blockSignals(False)
+        self._session_panel.setVisible(
+            backend.supports_sessions and self._sessions_toggle.isChecked())
+        self._sessions_toggle.setEnabled(backend.supports_sessions)
+        if not backend.supports_sessions:
+            self._session_panel.set_sessions([])
+            return
+        session = self._sessions.get(self._current)
+        current_id = session.resume_id if session else None
+        rows = ordered_sessions(backend.list_sessions(), AgentSessionMeta(),
+                                backend.display_name)
+        self._session_panel.set_sessions(rows, current_id)
 
     def _on_model_changed(self, index: int) -> None:
         if self._current is None:
@@ -287,11 +302,8 @@ class AgentChatDock(QWidget):
         await session.backend.reset()
         self._populate_session_list(session.backend)
 
-    def _on_session_picked(self, index: int) -> None:
+    def _on_session_selected(self, session_id: str) -> None:
         if self._current is None:
-            return
-        session_id = self._session_combo.itemData(index)
-        if not session_id:
             return
         session = self._sessions[self._current]
         backend = session.backend
@@ -304,9 +316,54 @@ class AgentChatDock(QWidget):
         self._transcript.render_messages(session.messages)
         self._transcript.flush_now()
         self._set_status(
-            f"Resumed session {session_id[:8]} ({len(session.messages)} messages)"
-        )
+            f"Resumed session {session_id[:8]} ({len(session.messages)} messages)")
         self._spawn(backend.resume(session_id))
+
+    def _on_session_rename(self, session_id: str) -> None:
+        session = self._sessions.get(self._current)
+        if session is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        meta = AgentSessionMeta()
+        current = meta.get(session.backend.display_name, session_id).name
+        name, ok = QInputDialog.getText(self, "Rename session", "Name:", text=current)
+        if ok:
+            meta.set_name(session.backend.display_name, session_id, name.strip())
+            self._populate_session_list(session.backend)
+
+    def _on_session_pin(self, session_id: str) -> None:
+        session = self._sessions.get(self._current)
+        if session is None:
+            return
+        meta = AgentSessionMeta()
+        cur = meta.get(session.backend.display_name, session_id).pinned
+        meta.set_pinned(session.backend.display_name, session_id, not cur)
+        self._populate_session_list(session.backend)
+
+    def _on_sessions_toggled(self, checked: bool) -> None:
+        self._session_panel.setVisible(
+            checked and self._current_supports_sessions())
+        with AgentChatSettings() as cfg:
+            cfg.sessions_pane_visible = checked
+
+    def _on_splitter_moved(self, *_args) -> None:
+        sizes = self._h_splitter.sizes()
+        if sizes and sizes[0] > 0:
+            with AgentChatSettings() as cfg:
+                cfg.sessions_pane_width = int(sizes[0])
+
+    def _current_supports_sessions(self) -> bool:
+        session = self._sessions.get(self._current)
+        return bool(session and session.backend.supports_sessions)
+
+    def _restore_pane_state(self) -> None:
+        cfg = AgentChatSettings()
+        self._sessions_toggle.blockSignals(True)
+        self._sessions_toggle.setChecked(cfg.sessions_pane_visible)
+        self._sessions_toggle.blockSignals(False)
+        width = max(120, int(cfg.sessions_pane_width))
+        self._h_splitter.setSizes([width, max(width, 600)])
+        self._session_panel.setVisible(cfg.sessions_pane_visible)
 
     def _purge_replay_tempdir(self, backend_name: str) -> None:
         shutil.rmtree(self._tempdir / backend_name / "session_replay", ignore_errors=True)
@@ -476,7 +533,6 @@ class AgentChatDock(QWidget):
             QMessageBox.warning(self, "Export failed", str(e))
 
     def _init_tool_verbosity(self) -> None:
-        from .settings import AgentChatSettings
         level = AgentChatSettings().tool_verbosity
         self._verbosity_combo.blockSignals(True)
         self._verbosity_combo.setCurrentIndex(max(0, min(2, level - 1)))
@@ -486,7 +542,6 @@ class AgentChatDock(QWidget):
     def _on_verbosity_changed(self, index: int) -> None:
         level = index + 1
         self._transcript.set_tool_verbosity(level)
-        from .settings import AgentChatSettings
         with AgentChatSettings() as s:
             s.tool_verbosity = level
 
