@@ -84,4 +84,4 @@ def _fetch_paper_impl(id_or_url: str) -> dict:
     return _msg(f"could not retrieve full text for {arxiv_id}; use the abstract/DOI instead")
 
 
-fetch_paper = CacheCall(cache_retention=_FETCH_RETENTION, is_pure=False)(_fetch_paper_impl)
+fetch_paper = CacheCall(cache_retention=_FETCH_RETENTION, is_pure=True)(_fetch_paper_impl)

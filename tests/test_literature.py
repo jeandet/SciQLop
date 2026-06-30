@@ -101,3 +101,25 @@ def test_search_literature_both_without_token_notes_skip(qtbot, monkeypatch):
     monkeypatch.setattr(lit, "ads_token", lambda: None)
     out = lit.search_literature("recon", source="both", max_results=3)
     assert "ADS skipped" in out["content"][0]["text"]
+
+
+def test_search_ads_impl_parses(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+
+    class _Resp:
+        ok = True
+        def json(self):          # speasy Response.json is a method, not a property
+            return _ADS_JSON
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", lambda *a, **k: _Resp())
+    papers = lit._search_ads_impl("turbulence", 3)
+    assert len(papers) == 1
+    assert papers[0].identifier == "2023ApJ...1..1D"
+
+
+def test_search_ads_impl_no_token_returns_empty(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+    monkeypatch.setattr(lit, "ads_token", lambda: None)
+    monkeypatch.setattr(lit.http, "get",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("http called without token")))
+    assert lit._search_ads_impl("turbulence", 3) == []

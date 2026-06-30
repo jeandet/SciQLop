@@ -72,23 +72,6 @@ def _parse_ads_json(payload: dict) -> List[Paper]:
     return papers
 
 
-@CacheCall(cache_retention=_SEARCH_RETENTION, is_pure=False)
-def search_arxiv(query: str, max_results: int) -> List[Paper]:
-    sq = query if ":" in query else f"all:{query}"
-    r = http.get("http://export.arxiv.org/api/query",
-                 params={"search_query": sq, "max_results": str(max_results)}, timeout=30)
-    return _parse_arxiv_atom(r.text) if r.ok else []
-
-
-@CacheCall(cache_retention=_SEARCH_RETENTION, is_pure=False)
-def search_ads(query: str, max_results: int, token: str) -> List[Paper]:
-    r = http.get("https://api.adsabs.harvard.edu/v1/search/query",
-                 headers={"Authorization": f"Bearer {token}"},
-                 params={"q": query, "rows": str(max_results),
-                         "fl": "title,author,year,bibcode,doi,abstract"}, timeout=30)
-    return _parse_ads_json(r.json) if r.ok else []
-
-
 def ads_token() -> Optional[str]:
     try:
         tok = AdsCredentialsSettings().token
@@ -97,6 +80,30 @@ def ads_token() -> Optional[str]:
     except Exception:
         pass
     return os.environ.get("ADS_API_TOKEN") or None
+
+
+def _search_arxiv_impl(query: str, max_results: int) -> List[Paper]:
+    sq = query if ":" in query else f"all:{query}"
+    r = http.get("https://export.arxiv.org/api/query",
+                 params={"search_query": sq, "max_results": str(max_results)}, timeout=30)
+    return _parse_arxiv_atom(r.text) if r.ok else []
+
+
+search_arxiv = CacheCall(cache_retention=_SEARCH_RETENTION, is_pure=True)(_search_arxiv_impl)
+
+
+def _search_ads_impl(query: str, max_results: int) -> List[Paper]:
+    token = ads_token()
+    if not token:
+        return []
+    r = http.get("https://api.adsabs.harvard.edu/v1/search/query",
+                 headers={"Authorization": f"Bearer {token}"},
+                 params={"q": query, "rows": str(max_results),
+                         "fl": "title,author,year,bibcode,doi,abstract"}, timeout=30)
+    return _parse_ads_json(r.json()) if r.ok else []
+
+
+search_ads = CacheCall(cache_retention=_SEARCH_RETENTION, is_pure=True)(_search_ads_impl)
 
 
 def _render_paper(p: Paper) -> str:
@@ -119,7 +126,7 @@ def search_literature(query: str, source: str = "both", max_results: int = 5) ->
         tok = ads_token()
         if tok:
             try:
-                papers += search_ads(query, max_results, tok)
+                papers += search_ads(query, max_results)
             except Exception as e:  # noqa: BLE001
                 notes.append(f"(ADS error: {e})")
         else:
