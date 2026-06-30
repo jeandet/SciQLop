@@ -1,7 +1,7 @@
 """Persisted settings for the agent chat dock."""
-from typing import ClassVar
+from typing import ClassVar, Dict
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from SciQLop.components.settings import SettingsCategory
 from SciQLop.components.settings.backend import ConfigEntry
@@ -16,6 +16,8 @@ class AgentChatSettings(ConfigEntry):
         description="How much of the agent's tool activity to show in the chat "
                     "(1 = step names, 2 = + inputs, 3 = + result summaries).",
     )
+    sessions_pane_visible: bool = Field(default=True, json_schema_extra={"widget": "hidden"})
+    sessions_pane_width: int = Field(default=280, json_schema_extra={"widget": "hidden"})
 
 
 class AdsCredentialsSettings(ConfigEntry):
@@ -29,3 +31,32 @@ class AdsCredentialsSettings(ConfigEntry):
         description="NASA ADS API token (https://ui.adsabs.harvard.edu/user/settings/token)",
         json_schema_extra={"widget": "password"},
     )
+
+
+def _session_key(backend: str, session_id: str) -> str:
+    return f"{backend}/{session_id}"
+
+
+class SessionMetaEntry(BaseModel):
+    name: str = ""
+    pinned: bool = False
+
+
+class AgentSessionMeta(ConfigEntry):
+    category: ClassVar[str] = SettingsCategory.APPLICATION
+    subcategory: ClassVar[str] = "Agent chat"
+    entries: Dict[str, SessionMetaEntry] = Field(
+        default_factory=dict, json_schema_extra={"widget": "hidden"})
+
+    def get(self, backend: str, session_id: str) -> SessionMetaEntry:
+        return self.entries.get(_session_key(backend, session_id), SessionMetaEntry())
+
+    def set_name(self, backend: str, session_id: str, name: str) -> None:
+        entry = self.entries.setdefault(_session_key(backend, session_id), SessionMetaEntry())
+        entry.name = name
+        self.save()
+
+    def set_pinned(self, backend: str, session_id: str, pinned: bool) -> None:
+        entry = self.entries.setdefault(_session_key(backend, session_id), SessionMetaEntry())
+        entry.pinned = pinned
+        self.save()
