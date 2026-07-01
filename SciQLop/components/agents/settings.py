@@ -1,5 +1,5 @@
 """Persisted settings for the agent chat dock."""
-from typing import ClassVar, Dict
+from typing import ClassVar, Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,8 @@ def _session_key(backend: str, session_id: str) -> str:
 class SessionMetaEntry(BaseModel):
     name: str = ""
     pinned: bool = False
+    group: str = ""
+    tags: List[str] = Field(default_factory=list)
 
 
 class AgentSessionMeta(ConfigEntry):
@@ -60,3 +62,26 @@ class AgentSessionMeta(ConfigEntry):
         entry = self.entries.setdefault(_session_key(backend, session_id), SessionMetaEntry())
         entry.pinned = pinned
         self.save()
+
+    def set_group(self, backend: str, session_id: str, group: str) -> None:
+        entry = self.entries.setdefault(_session_key(backend, session_id), SessionMetaEntry())
+        entry.group = group
+        self.save()
+
+    def set_tags(self, backend: str, session_id: str, tags: List[str]) -> None:
+        entry = self.entries.setdefault(_session_key(backend, session_id), SessionMetaEntry())
+        entry.tags = list(tags)
+        self.save()
+
+    def rename_group(self, backend: str, old: str, new: str) -> None:
+        prefix = f"{backend}/"
+        changed = False
+        for key, entry in self.entries.items():
+            if key.startswith(prefix) and entry.group == old:
+                entry.group = new
+                changed = True
+        if changed:
+            self.save()
+
+    def delete_group(self, backend: str, group: str) -> None:
+        self.rename_group(backend, group, "")
