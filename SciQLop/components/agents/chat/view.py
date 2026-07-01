@@ -267,6 +267,17 @@ class TranscriptView(QTextBrowser):
         cursor.insertBlock()
 
     def _scroll_to_end(self) -> None:
+        # Each flush rebuilds the document via setDocument(), which resets the
+        # scroll to the top; the scrollbar's range is only recomputed on the next
+        # layout pass, so a single setValue(maximum()) here reads a stale (too
+        # small) maximum on a live widget and lands short of the newest message
+        # ("scrolls up"). Scroll now (covers the synchronous case) and again on
+        # the next event-loop cycle once layout has settled. The text cursor is
+        # left untouched so a user's selection survives streaming updates.
+        self._scroll_bottom_now()
+        QTimer.singleShot(0, self._scroll_bottom_now)
+
+    def _scroll_bottom_now(self) -> None:
         bar = self.verticalScrollBar()
         bar.setValue(bar.maximum())
 
