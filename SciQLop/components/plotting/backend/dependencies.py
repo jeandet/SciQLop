@@ -97,6 +97,12 @@ def _resolve_path(target, start: float, stop: float):
     return provider.get_data(node, start, stop)
 
 
+def resolve_product_path(target, start: float, stop: float):
+    """Public entry point: resolve a `//`-path (or list) to provider data,
+    with no dependency pad. Reuses the VP dependency resolver."""
+    return _resolve_path(target, start, stop)
+
+
 def _resolve_target(target, start: float, stop: float):
     if isinstance(target, (str, list)):
         return _resolve_path(target, start, stop)

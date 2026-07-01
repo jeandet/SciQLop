@@ -464,6 +464,70 @@ def _install_package_tool() -> Dict[str, Any]:
     )
 
 
+def _fetch_tool() -> Dict[str, Any]:
+    from . import fetch
+
+    def _fetch_one(product_id: str, t0: float, t1: float):
+        if "//" in product_id:
+            from SciQLop.components.plotting.backend.dependencies import resolve_product_path
+            data = resolve_product_path(product_id, t0, t1)
+        else:
+            import speasy as spz
+            data = spz.get_data(product_id, t0, t1)
+        if data is None:
+            raise ValueError(f"no data for {product_id}")
+        return list(data) if isinstance(data, (list, tuple)) else [data]
+
+    def _grid(ref, var):
+        from speasy.signal.resampling import interpolate
+        return interpolate(ref, var)
+
+    def _run(payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        return fetch.fetch_products(
+            [str(p) for p in payload["products"]],
+            payload["start"], payload["stop"], str(payload["name"]),
+            km.shell.user_ns,
+            cadence=payload.get("cadence") or None,
+            overwrite=bool(payload.get("overwrite", False)),
+            preview=bool(payload.get("preview", False)),
+            fetch_one=_fetch_one, grid_interpolate=_grid,
+        )
+
+    return _text_tool(
+        "sciqlop_fetch",
+        (
+            "Fetch one or more products into the embedded kernel under `name` and "
+            "return a compact summary (shape, units, coverage %, min/mean/max) — NOT "
+            "the raw arrays. Compute on the handle afterwards with sciqlop_exec_python "
+            "(e.g. `name['B_gse'].to_dataframe()`). `products` are `//`-paths "
+            "(from sciqlop_products_tree) or speasy spz_uids — auto-detected. "
+            "`start`/`stop` are ISO-8601 strings or POSIX seconds. With `cadence` "
+            "(e.g. '1min') all products are fill-scrubbed and interpolated onto one "
+            "common grid; without it they are bound at native cadence. Errors if "
+            "`name` exists unless `overwrite=true`. `preview=true` adds a thumbnail."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "products": {"type": "array", "items": {"type": "string"}},
+                "start": {"type": ["string", "number"]},
+                "stop": {"type": ["string", "number"]},
+                "name": {"type": "string"},
+                "cadence": {"type": "string"},
+                "overwrite": {"type": "boolean"},
+                "preview": {"type": "boolean"},
+            },
+            "required": ["products", "start", "stop", "name"],
+        },
+        _run,
+        gated=True,
+        thread=True,  # speasy fetch blocks; keep it off the GUI event loop
+    )
+
+
 def _write_tools(main_window) -> List[Dict[str, Any]]:
     @on_main_thread
     def _set_time_range(name: Optional[str], start: float, stop: float):
@@ -496,7 +560,7 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
     )
 
     return [set_time_range, _create_panel_tool(main_window), _exec_python_tool(),
-            _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
+            _fetch_tool(), _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
