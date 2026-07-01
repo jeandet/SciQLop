@@ -6,6 +6,7 @@ backends.
 """
 from __future__ import annotations
 
+import base64
 from typing import Any, Callable, Dict, List
 
 import numpy as np
@@ -65,8 +66,31 @@ def _unique_key(mapping: Dict[str, Any], short: str) -> str:
     return f"{short}_{i}"
 
 
+def render_preview(mapping: Dict[str, Any]) -> bytes:
+    import io
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    n = max(1, len(mapping))
+    fig = Figure(figsize=(6, 1.6 * n))
+    for ax_i, (short, var) in enumerate(mapping.items(), start=1):
+        ax = fig.add_subplot(n, 1, ax_i)
+        vals = np.asarray(getattr(var, "values", []))
+        t = np.asarray(getattr(var, "time", []))
+        if vals.ndim <= 2 and vals.size and t.size == vals.shape[0]:
+            ax.plot(t, vals)
+        else:
+            ax.text(0.5, 0.5, f"{short}: {tuple(vals.shape)} (preview skipped)",
+                    ha="center", va="center")
+        ax.set_ylabel(short)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    FigureCanvasAgg(fig).print_png(buf)
+    return buf.getvalue()
+
+
 def fetch_products(products, start, stop, name, shell_ns, *, cadence, overwrite,
-                   fetch_one: Callable, grid_interpolate: Callable) -> Dict[str, Any]:
+                   preview=False, fetch_one: Callable, grid_interpolate: Callable) -> Dict[str, Any]:
     if not overwrite and name in shell_ns:
         existing = type(shell_ns[name]).__name__
         return {"content": [{"type": "text",
@@ -96,4 +120,10 @@ def fetch_products(products, start, stop, name, shell_ns, *, cadence, overwrite,
 
     if mapping:
         shell_ns[name] = mapping
-    return {"content": [{"type": "text", "text": _summary(name, mapping, cadence, failures)}]}
+    content = [{"type": "text", "text": _summary(name, mapping, cadence, failures)}]
+    if mapping and preview:
+        png = render_preview(mapping)
+        content.append({"type": "image",
+                        "data": base64.b64encode(png).decode("ascii"),
+                        "mimeType": "image/png"})
+    return {"content": content}

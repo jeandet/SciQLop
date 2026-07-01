@@ -137,3 +137,25 @@ def test_all_fail_binds_nothing(qtbot):
                          grid_interpolate=lambda r, v: v)
     assert "M" not in ns
     assert out["content"][0]["text"].count("⚠️") == 2
+
+
+def test_preview_appends_image_block(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    out = fetch_products(["p"], 0.0, 4.0, "P", ns, cadence=None, overwrite=False,
+                         preview=True,
+                         fetch_one=lambda *a: [FakeVar("B", [1.0, 2.0, 3.0, 4.0], _times(4))],
+                         grid_interpolate=lambda r, v: v)
+    kinds = [c["type"] for c in out["content"]]
+    assert "image" in kinds
+    img = next(c for c in out["content"] if c["type"] == "image")
+    assert img["mimeType"] == "image/png" and img["data"]
+
+
+def test_no_preview_by_default_is_text_only(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    out = fetch_products(["p"], 0.0, 1.0, "P", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: [FakeVar("B", [1.0], _times(1))],
+                         grid_interpolate=lambda r, v: v)
+    assert [c["type"] for c in out["content"]] == ["text"]
