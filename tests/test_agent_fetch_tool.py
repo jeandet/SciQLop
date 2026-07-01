@@ -73,3 +73,67 @@ def test_fetch_duplicate_name_gets_suffix(qtbot):
                    fetch_one=lambda pid, t0, t1: [var1 if pid == "p1" else var2],
                    grid_interpolate=lambda ref, v: v)
     assert set(ns["X"].keys()) == {"B", "B_2"}
+
+
+def test_cadence_aligns_all_products_on_shared_ref(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    seen_refs = []
+
+    def grid(ref, v):
+        seen_refs.append(len(ref))
+        return FakeVar(v.name, np.ones(len(ref)), ref)
+
+    fetch_products(
+        ["p1", "p2"], 0.0, 60.0, "G", ns,
+        cadence="10s", overwrite=False,
+        fetch_one=lambda pid, t0, t1: [FakeVar(pid, [1.0, 2.0], _times(2))],
+        grid_interpolate=grid,
+    )
+    assert set(ns["G"].keys()) == {"p1", "p2"}
+    assert seen_refs and len(set(seen_refs)) == 1        # every product hit the SAME grid
+    assert ns["G"]["p1"].time.shape == ns["G"]["p2"].time.shape
+
+
+def test_collision_without_overwrite_binds_nothing(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {"X": 123}
+    out = fetch_products(["p"], 0.0, 1.0, "X", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: [FakeVar("p", [1.0], _times(1))],
+                         grid_interpolate=lambda r, v: v)
+    assert ns["X"] == 123                                # untouched
+    assert "already bound" in out["content"][0]["text"]
+
+
+def test_overwrite_true_rebinds(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {"X": 123}
+    fetch_products(["p"], 0.0, 1.0, "X", ns, cadence=None, overwrite=True,
+                   fetch_one=lambda *a: [FakeVar("p", [1.0], _times(1))],
+                   grid_interpolate=lambda r, v: v)
+    assert isinstance(ns["X"], dict) and "p" in ns["X"]
+
+
+def test_partial_failure_binds_good_reports_bad(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+
+    def fetch_one(pid, t0, t1):
+        if pid == "bad":
+            raise ValueError("product not found")
+        return [FakeVar("good", [1.0], _times(1))]
+
+    out = fetch_products(["good_id", "bad"], 0.0, 1.0, "M", ns, cadence=None,
+                         overwrite=False, fetch_one=fetch_one, grid_interpolate=lambda r, v: v)
+    assert "good" in ns["M"]
+    assert "bad: ValueError: product not found" in out["content"][0]["text"]
+
+
+def test_all_fail_binds_nothing(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    out = fetch_products(["a", "b"], 0.0, 1.0, "M", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: (_ for _ in ()).throw(ValueError("nope")),
+                         grid_interpolate=lambda r, v: v)
+    assert "M" not in ns
+    assert out["content"][0]["text"].count("⚠️") == 2
