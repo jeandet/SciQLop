@@ -16,7 +16,7 @@
 - The shared kernel is reached via `_kernel_manager()` in `_builder.py`; its `.shell.user_ns` is the namespace, shared with JupyterLab. `km.submit_cell(code)` returns a `Future`.
 - speasy `SpeasyVariable` exposes: `.name`, `.unit`, `.shape`, `.columns`, `.values` (ndarray), `.time` (ndarray), `.replace_fillval_by_nan(inplace=True, convert_to_float=True)`, `.to_dataframe()`.
 - `speasy.signal.resampling.interpolate(ref, var)` interpolates `var` onto reference times `ref` (numpy datetime64 array) — this is the common-grid primitive.
-- Importing `_builder` requires a `QApplication` (ProductsModel static), so registration/handler tests take pytest-qt's `qtbot` and import inside the test (see `tests/test_literature_tools.py`).
+- Importing **anything** under `SciQLop.components.agents.tools.*` (including the pure `fetch.py`/`figure.py`) pulls in the agents package `__init__` → `chat_dock` → `_builder` → `ProductsModel`, which needs a `QApplication`. Therefore **every** test that imports from `agents.tools.*` must take pytest-qt's `qtbot` fixture and do the import **inside** the test function (see `tests/test_literature_tools.py`). This applies to the pure-logic tests too — the fetch logic is still exercised offline via injected fake backends; `qtbot` only supplies the `QApplication` the import chain requires. Do **not** work around this by editing `tests/conftest.py` or `tools/__init__.py`.
 - Bind format: the chosen `name` holds a `dict[str, SpeasyVariable]` keyed by `var.name` (single product ⇒ 1-entry dict). Duplicate names get a `_2`, `_3`, … suffix.
 - Resample method is linear only (via `interpolate`); alternate methods are out of scope.
 
@@ -233,7 +233,7 @@ git commit -m "feat(agents): fetch.py — pure fetch/scrub/grid/bind/summary log
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-def test_cadence_aligns_all_products_on_shared_ref():
+def test_cadence_aligns_all_products_on_shared_ref(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
     seen_refs = []
@@ -253,7 +253,7 @@ def test_cadence_aligns_all_products_on_shared_ref():
     assert ns["G"]["p1"].time.shape == ns["G"]["p2"].time.shape
 
 
-def test_collision_without_overwrite_binds_nothing():
+def test_collision_without_overwrite_binds_nothing(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {"X": 123}
     out = fetch_products(["p"], 0.0, 1.0, "X", ns, cadence=None, overwrite=False,
@@ -263,7 +263,7 @@ def test_collision_without_overwrite_binds_nothing():
     assert "already bound" in out["content"][0]["text"]
 
 
-def test_overwrite_true_rebinds():
+def test_overwrite_true_rebinds(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {"X": 123}
     fetch_products(["p"], 0.0, 1.0, "X", ns, cadence=None, overwrite=True,
@@ -272,7 +272,7 @@ def test_overwrite_true_rebinds():
     assert isinstance(ns["X"], dict) and "p" in ns["X"]
 
 
-def test_partial_failure_binds_good_reports_bad():
+def test_partial_failure_binds_good_reports_bad(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
 
@@ -287,7 +287,7 @@ def test_partial_failure_binds_good_reports_bad():
     assert "bad: ValueError: product not found" in out["content"][0]["text"]
 
 
-def test_all_fail_binds_nothing():
+def test_all_fail_binds_nothing(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
     out = fetch_products(["a", "b"], 0.0, 1.0, "M", ns, cadence=None, overwrite=False,
@@ -332,7 +332,7 @@ git commit -m "test(agents): pin fetch grid-alignment, collision, partial-failur
 - [ ] **Step 1: Write the failing test**
 
 ```python
-def test_preview_appends_image_block():
+def test_preview_appends_image_block(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
     out = fetch_products(["p"], 0.0, 4.0, "P", ns, cadence=None, overwrite=False,
@@ -345,7 +345,7 @@ def test_preview_appends_image_block():
     assert img["mimeType"] == "image/png" and img["data"]
 
 
-def test_no_preview_by_default_is_text_only():
+def test_no_preview_by_default_is_text_only(qtbot):
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
     out = fetch_products(["p"], 0.0, 1.0, "P", ns, cadence=None, overwrite=False,
@@ -599,13 +599,13 @@ git commit -m "feat(agents): register sciqlop_fetch tool + public resolve_produc
 
 ```python
 # tests/test_exec_traceback_truncation.py
-def test_short_traceback_unchanged():
+def test_short_traceback_unchanged(qtbot):
     from SciQLop.components.agents.tools._builder import _truncate_traceback
     txt = "\n".join(f"line {i}" for i in range(10))
     assert _truncate_traceback(txt) == txt
 
 
-def test_long_traceback_keeps_head_and_tail():
+def test_long_traceback_keeps_head_and_tail(qtbot):
     from SciQLop.components.agents.tools._builder import _truncate_traceback
     txt = "\n".join(f"line {i}" for i in range(200))
     out = _truncate_traceback(txt)
@@ -680,14 +680,14 @@ import asyncio
 from unittest.mock import MagicMock
 
 
-def test_current_figure_png_none_when_no_figure():
+def test_current_figure_png_none_when_no_figure(qtbot):
     import matplotlib.pyplot as plt
     from SciQLop.components.agents.tools.figure import current_figure_png
     plt.close("all")
     assert current_figure_png() is None
 
 
-def test_current_figure_png_returns_bytes_when_present():
+def test_current_figure_png_returns_bytes_when_present(qtbot):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
