@@ -15,16 +15,6 @@ class DisplaySession:
     tags: List[str] = field(default_factory=list)
 
 
-def ordered_sessions(entries, meta, backend: str) -> List[DisplaySession]:
-    out: List[DisplaySession] = []
-    for e in entries:
-        m = meta.get(backend, e.id)
-        out.append(DisplaySession(
-            id=e.id, name=(m.name or e.label), pinned=bool(m.pinned), mtime=e.mtime))
-    out.sort(key=lambda d: (not d.pinned, -d.mtime))
-    return out
-
-
 PINNED_GROUP = "📌 Pinned"
 UNGROUPED = "Ungrouped"
 

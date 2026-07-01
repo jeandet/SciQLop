@@ -38,7 +38,7 @@ from .chat import (
     TranscriptView,
 )
 from .chat.session_panel import SessionListPanel
-from .chat.sessions_view import ordered_sessions
+from .chat.sessions_view import grouped_sessions, all_groups, all_tags
 from .registry import available_backends, create_backend
 from .settings import AgentChatSettings, AgentSessionMeta
 from .tools import build_sciqlop_tools
@@ -62,6 +62,7 @@ class AgentChatDock(QWidget):
         self._sessions: Dict[str, _AgentSession] = {}
         self._current: Optional[str] = None
         self._allow_writes = False
+        self._session_filter = ""
         self._turn_task: Optional[asyncio.Task] = None
         self._bg_tasks: set[asyncio.Task] = set()
         self._pending_pane_width = 0
@@ -155,6 +156,12 @@ class AgentChatDock(QWidget):
         self._session_panel.session_selected.connect(self._on_session_selected)
         self._session_panel.rename_requested.connect(self._on_session_rename)
         self._session_panel.pin_toggle_requested.connect(self._on_session_pin)
+        self._session_panel.filter_changed.connect(self._on_session_filter)
+        self._session_panel.move_requested.connect(self._on_session_move)
+        self._session_panel.tags_edit_requested.connect(self._on_session_tags)
+        self._session_panel.session_moved.connect(self._on_session_dropped)
+        self._session_panel.group_rename_requested.connect(self._on_group_rename)
+        self._session_panel.group_delete_requested.connect(self._on_group_delete)
         self._h_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._h_splitter.addWidget(self._session_panel)
         self._h_splitter.addWidget(self._splitter)
@@ -271,13 +278,13 @@ class AgentChatDock(QWidget):
             backend.supports_sessions and self._sessions_toggle.isChecked())
         self._sessions_toggle.setEnabled(backend.supports_sessions)
         if not backend.supports_sessions:
-            self._session_panel.set_sessions([])
+            self._session_panel.set_groups([])
             return
         session = self._sessions.get(self._current)
         current_id = session.resume_id if session else None
-        rows = ordered_sessions(backend.list_sessions(), AgentSessionMeta(),
-                                backend.display_name)
-        self._session_panel.set_sessions(rows, current_id)
+        groups = grouped_sessions(backend.list_sessions(), AgentSessionMeta(),
+                                  backend.display_name, self._session_filter)
+        self._session_panel.set_groups(groups, current_id)
 
     def _on_model_changed(self, index: int) -> None:
         if self._current is None:
@@ -345,6 +352,106 @@ class AgentChatDock(QWidget):
         cur = meta.get(session.backend.display_name, session_id).pinned
         meta.set_pinned(session.backend.display_name, session_id, not cur)
         self._populate_session_list(session.backend)
+
+    def _current_backend(self):
+        session = self._sessions.get(self._current)
+        return session.backend if session else None
+
+    def _on_session_filter(self, text: str) -> None:
+        self._session_filter = text
+        be = self._current_backend()
+        if be is not None:
+            self._populate_session_list(be)
+
+    def _on_session_dropped(self, session_id: str, group: str) -> None:
+        be = self._current_backend()
+        if be is None:
+            return
+        AgentSessionMeta().set_group(be.display_name, session_id, group)
+        self._populate_session_list(be)
+
+    def _on_session_move(self, session_id: str) -> None:
+        be = self._current_backend()
+        if be is None:
+            return
+        meta = AgentSessionMeta()
+        groups = all_groups(be.list_sessions(), meta, be.display_name)
+        current = meta.get(be.display_name, session_id).group
+        choices = groups + [""] if "" not in groups else groups
+        idx = choices.index(current) if current in choices else 0
+        name, ok = QInputDialog.getItem(
+            self, "Move to group", "Group (blank = Ungrouped):", choices, idx, True)
+        if ok:
+            meta.set_group(be.display_name, session_id, name.strip())
+            self._populate_session_list(be)
+
+    def _on_session_tags(self, session_id: str) -> None:
+        be = self._current_backend()
+        if be is None:
+            return
+        meta = AgentSessionMeta()
+        current = meta.get(be.display_name, session_id).tags
+        known = all_tags(be.list_sessions(), meta, be.display_name)
+        text = self._prompt_tags(", ".join(current), known)
+        if text is None:
+            return
+        tags = []
+        for raw in text.split(","):
+            t = raw.strip()
+            if t and t not in tags:
+                tags.append(t)
+        meta.set_tags(be.display_name, session_id, tags)
+        self._populate_session_list(be)
+
+    def _prompt_tags(self, current: str, known: list):
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QLineEdit, QDialogButtonBox, QCompleter, QLabel)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit tags")
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel("Comma-separated tags:"))
+        line = QLineEdit(current)
+        completer = QCompleter(known, dlg)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        line.setCompleter(completer)
+
+        def _token(text):
+            completer.setCompletionPrefix(text.split(",")[-1].strip())
+
+        def _accept(choice):
+            parts = line.text().split(",")
+            parts[-1] = " " + choice
+            line.setText(", ".join(p.strip() for p in parts if p.strip()))
+
+        line.textEdited.connect(_token)
+        completer.activated.connect(_accept)
+        v.addWidget(line)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        v.addWidget(buttons)
+        return line.text() if dlg.exec() else None
+
+    def _on_group_rename(self, old: str) -> None:
+        be = self._current_backend()
+        if be is None:
+            return
+        new, ok = QInputDialog.getText(self, "Rename group", "New name:", text=old)
+        if ok:
+            AgentSessionMeta().rename_group(be.display_name, old, new.strip())
+            self._populate_session_list(be)
+
+    def _on_group_delete(self, group: str) -> None:
+        be = self._current_backend()
+        if be is None:
+            return
+        if QMessageBox.question(
+                self, "Delete group",
+                f"Ungroup all sessions in '{group}'? (sessions are kept)"
+        ) == QMessageBox.StandardButton.Yes:
+            AgentSessionMeta().delete_group(be.display_name, group)
+            self._populate_session_list(be)
 
     def _on_sessions_toggled(self, checked: bool) -> None:
         self._session_panel.setVisible(
