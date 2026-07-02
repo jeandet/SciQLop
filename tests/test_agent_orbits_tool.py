@@ -95,3 +95,77 @@ def test_bodies_and_frames_impl_calls_both_endpoints_and_renders(qtbot, monkeypa
     assert "Earth, Solar Orbiter" in text
     assert len(calls) == 2
     assert calls[0].endswith("/get_bodies") and calls[1].endswith("/get_frames")
+
+
+_TRAJECTORY_PAYLOAD = {
+    "bodyid": -144, "frameid": 1601010, "frame": "HEEQ",
+    "kernel": {"name": "so/mk/solo_ANC_soc-pred-mk.tm", "date": "2026-07-02T01:21:26.845Z"},
+    "start": "2026-01-01T00:00:00.000Z", "stop": "2026-01-01T02:00:00.000Z",
+    "sampling (s)": 3600, "units": "km/s",
+    "values": [
+        {"time": "2026-01-01T00:00:00.000Z", "position": [1.25759608E8, 1.968625E7, 7086599.0],
+         "speed": [-6.342198848724365, -4.787736892700195, -7.029590129852295]},
+        {"time": "2026-01-01T01:00:00.000Z", "position": [1.25736744E8, 1.9669028E7, 7061289.5],
+         "speed": [-6.359248161315918, -4.780154228210449, -7.031221866607666]},
+    ],
+}
+
+
+def test_parse_trajectory_builds_position_and_speed_variables(qtbot):
+    from SciQLop.components.agents.tools.orbits import parse_trajectory
+    mapping = parse_trajectory(_TRAJECTORY_PAYLOAD)
+    assert set(mapping.keys()) == {"position", "speed"}
+    pos, speed = mapping["position"], mapping["speed"]
+    assert pos.shape == (2, 3) and speed.shape == (2, 3)
+    assert pos.unit == "km" and speed.unit == "km/s"
+    assert pos.columns == ["X", "Y", "Z"] and speed.columns == ["Vx", "Vy", "Vz"]
+    assert pos.meta.get("COORDINATE_SYSTEM") == "HEEQ"
+    assert pos.values[0].tolist() == [1.25759608E8, 1.968625E7, 7086599.0]
+
+
+class _FakeResponse:
+    def __init__(self, ok, payload=None, text=""):
+        self.ok = ok
+        self._payload = payload
+        self.text = text
+
+    def json(self):
+        return self._payload
+
+
+def test_fetch_ephemeris_binds_dict_and_summarizes(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_ephemeris
+    ns = {}
+    captured = {}
+
+    def http_get(url, params):
+        captured["url"], captured["params"] = url, params
+        return _FakeResponse(True, _TRAJECTORY_PAYLOAD)
+
+    out = fetch_ephemeris("Solar Orbiter", "HEEQ", 1767225600.0, 1767232800.0, 3600,
+                          "orbit", ns, http_get=http_get)
+    assert "position" in ns["orbit"] and "speed" in ns["orbit"]
+    text = out["content"][0]["text"]
+    assert "orbit" in text and "HEEQ" in text and "2 sample" in text
+    assert "to_dataframe()" in text
+    assert captured["url"].endswith("/get_trajectory")
+    assert captured["params"]["body"] == "Solar Orbiter"
+    assert captured["params"]["frame"] == "HEEQ"
+
+
+def test_fetch_ephemeris_error_response_returns_text_verbatim(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_ephemeris
+    ns = {}
+    out = fetch_ephemeris("NOPE", None, 0.0, 1.0, None, "orbit", ns,
+                          http_get=lambda url, params: _FakeResponse(False, text="Body NOPE not found"))
+    assert "orbit" not in ns
+    assert out["content"][0]["text"] == "Body NOPE not found"
+
+
+def test_fetch_ephemeris_respects_overwrite_guard(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_ephemeris
+    ns = {"orbit": 123}
+    out = fetch_ephemeris("Solar Orbiter", None, 0.0, 1.0, None, "orbit", ns,
+                          http_get=lambda url, params: _FakeResponse(True, _TRAJECTORY_PAYLOAD))
+    assert ns["orbit"] == 123
+    assert "already bound" in out["content"][0]["text"]
