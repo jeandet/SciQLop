@@ -499,7 +499,7 @@ def _fetch_tool() -> Dict[str, Any]:
         else:
             import speasy as spz
             data = spz.get_data(product_id, t0, t1)
-        if data is None:
+        if not data:
             raise ValueError(f"no data for {product_id}")
         return list(data) if isinstance(data, (list, tuple)) else [data]
 

@@ -159,3 +159,20 @@ def test_no_preview_by_default_is_text_only(qtbot):
                          fetch_one=lambda *a: [FakeVar("B", [1.0], _times(1))],
                          grid_interpolate=lambda r, v: v)
     assert [c["type"] for c in out["content"]] == ["text"]
+
+
+def test_post_fetch_error_does_not_sink_batch(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+
+    def grid(ref, v):
+        if v.name == "bad":
+            raise ValueError("cannot interpolate spectro")
+        return v
+
+    out = fetch_products(["good", "bad"], 0.0, 60.0, "M", ns, cadence="10s",
+                         overwrite=False,
+                         fetch_one=lambda pid, t0, t1: [FakeVar(pid, [1.0, 2.0], _times(2))],
+                         grid_interpolate=grid)
+    assert "good" in ns["M"] and "bad" not in ns["M"]
+    assert "bad: ValueError: cannot interpolate spectro" in out["content"][0]["text"]

@@ -109,13 +109,16 @@ def fetch_products(products, start, stop, name, shell_ns, *, cadence, overwrite,
     for pid in products:
         try:
             vars_ = fetch_one(pid, t0, t1)
+            processed = []
+            for var in vars_:
+                var = var.replace_fillval_by_nan(inplace=True, convert_to_float=True)
+                if ref is not None:
+                    var = grid_interpolate(ref, var)
+                processed.append(var)
         except Exception as e:  # noqa: BLE001
             failures.append(f"{pid}: {type(e).__name__}: {e}")
             continue
-        for var in vars_:
-            var = var.replace_fillval_by_nan(inplace=True, convert_to_float=True)
-            if ref is not None:
-                var = grid_interpolate(ref, var)
+        for var in processed:
             mapping[_unique_key(mapping, str(getattr(var, "name", pid)))] = var
 
     if mapping:
