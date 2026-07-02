@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional, Tuple
 
+import numpy as np
+import pandas as pd
+
 
 def _call(index, attr):
     fn = getattr(index, attr, None)
@@ -109,6 +112,44 @@ def _render(product: str, fields: Dict[str, Any], raw: Dict[str, str],
     return "\n".join(lines)
 
 
+_FRAME_KEYS = ("COORDINATE_SYSTEM", "coordinate_system", "FRAME", "frame")
+
+
+def _to_epoch(x) -> float:
+    if isinstance(x, (int, float)) and not isinstance(x, bool):
+        return float(x)
+    return pd.Timestamp(str(x)).timestamp()
+
+
+def _default_window(index) -> Optional[Tuple[float, float]]:
+    stop = getattr(index, "stop_date", None)
+    if not stop:
+        return None
+    t1 = _to_epoch(stop)
+    return (t1 - 86400.0, t1)
+
+
+def probe_summary(var) -> Dict[str, Any]:
+    vals = np.asarray(getattr(var, "values", []))
+    info: Dict[str, Any] = {"sampled_shape": tuple(vals.shape)}
+    fv = getattr(var, "fill_value", None)
+    if fv is not None:
+        info["fill_value"] = fv
+    meta = getattr(var, "meta", {}) or {}
+    for k in _FRAME_KEYS:
+        if k in meta:
+            info["frame"] = meta[k]
+            break
+    t = np.asarray(getattr(var, "time", []))
+    if t.size >= 2:
+        dt = np.median(np.diff(t).astype("timedelta64[ns]").astype(float)) / 1e9
+        info["median_cadence_s"] = round(dt, 3)
+    if vals.dtype.kind in "fiu" and vals.size:
+        gap = 100.0 * (~np.isfinite(vals)).sum() / vals.size
+        info["nan_gap_pct_in_window"] = round(gap, 1)
+    return info
+
+
 def describe_product(product, *, probe: bool = False, start=None, stop=None,
                      resolve_index: Callable, probe_fetch: Callable) -> Dict[str, Any]:
     index, note = resolve_index(product)
@@ -116,5 +157,21 @@ def describe_product(product, *, probe: bool = False, start=None, stop=None,
         return {"content": [{"type": "text", "text": note or f"could not resolve `{product}`"}]}
     norm = normalize(index)
     raw = raw_attrs(index, norm["consumed"])
-    text = _render(product, norm["fields"], raw, probe=None, note=note)
+
+    probe_info = None
+    if probe:
+        if start is not None and stop is not None:
+            window = (_to_epoch(start), _to_epoch(stop))
+        else:
+            window = _default_window(index)
+        if window is None:
+            note = (note + " " if note else "") + "(probe skipped: no window and no stop_date)"
+        else:
+            try:
+                var = probe_fetch(index, window[0], window[1])
+                probe_info = probe_summary(var)
+            except Exception as e:  # noqa: BLE001
+                note = (note + " " if note else "") + f"(probe failed: {type(e).__name__}: {e})"
+
+    text = _render(product, norm["fields"], raw, probe=probe_info, note=note)
     return {"content": [{"type": "text", "text": text}]}
