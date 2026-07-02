@@ -144,3 +144,100 @@ def test_real_detached_subprocess_writes_marker_and_log(qtbot, tmp_path):
     assert status["exit_code"] == 3
     log_path = Path(tmp_path / ".sciqlop-jobs" / f"{job_id}.log")
     assert "hello" in log_path.read_text()
+
+
+def test_submit_job_workspace_dir_with_space_in_path(qtbot, tmp_path):
+    space_dir = tmp_path / "my workspace"
+    space_dir.mkdir()
+    backend_module = __import__("SciQLop.components.jobs.backend.jobs_backend", fromlist=["JobsBackend"])
+    backend = backend_module.JobsBackend(workspace_dir_getter=lambda: str(space_dir))
+    job_id = backend.submit_job("sh -c 'echo hello; exit 0'", "space test")
+
+    deadline = time.monotonic() + 5.0
+    status = backend.job_status(job_id)
+    while status["status"] != "done" and time.monotonic() < deadline:
+        time.sleep(0.1)
+        status = backend.job_status(job_id)
+
+    assert status["status"] == "done"
+    assert status["exit_code"] == 0
+
+
+def test_singleton_constructed_on_main_thread_even_when_called_from_worker(qtbot, tmp_path, monkeypatch):
+    """Deviation from the prescribed test: `on_main_thread` only marshals once
+    `init_invoker()` has been called (e.g. by the real KernelManager at
+    startup); before that it just runs `func` directly, assuming the caller
+    is already on the main thread. A plain `t.join()` with no invoker
+    installed therefore can't prove anything about thread affinity here.
+
+    To faithfully exercise the fix, this test installs a real cross-thread
+    invoker (a QObject signal wired with Qt.BlockingQueuedConnection, the
+    same primitive jupyqt's real invoker is built on) and pumps the main
+    thread's event loop with QApplication.processEvents() while the worker
+    thread is blocked waiting for the marshaled call to run. The key
+    assertion — result["backend"].thread() == app.thread() — is unchanged.
+    """
+    import threading
+    import time
+    from PySide6.QtCore import QObject, Signal, Qt
+    from PySide6.QtWidgets import QApplication
+    from SciQLop.components.jobs.backend import jobs_backend as jb_module
+    from SciQLop.user_api import threading as sqp_threading
+
+    app = QApplication.instance()
+    if hasattr(app, "jobs_backend"):
+        delattr(app, "jobs_backend")
+
+    import SciQLop.components.workspaces as ws_module
+    monkeypatch.setattr(ws_module, "workspaces_manager_instance",
+                        lambda: type("W", (), {"workspace": type("WS", (), {"workspace_dir": str(tmp_path)})()})(),
+                        raising=False)
+
+    class _BlockingInvoker(QObject):
+        # No-payload signal on purpose: queued connections marshal arguments
+        # through QVariant copies, so a mutable Python container passed as a
+        # signal argument would be copied rather than shared. Stash the
+        # call/result on `self` instead, which crosses threads by reference.
+        run_requested = Signal()
+
+        def __init__(self):
+            super().__init__()
+            self._func = None
+            self._args = ()
+            self._kwargs = {}
+            self._result = None
+            self.run_requested.connect(self._run, Qt.BlockingQueuedConnection)
+
+        def _run(self):
+            self._result = self._func(*self._args, **self._kwargs)
+
+        def __call__(self, func, *args, **kwargs):
+            self._func, self._args, self._kwargs = func, args, kwargs
+            self.run_requested.emit()
+            return self._result
+
+    invoker = _BlockingInvoker()
+    invoker.moveToThread(app.thread())
+    old_invoker = sqp_threading._invoker
+    sqp_threading.init_invoker(invoker)
+
+    result = {}
+    done = threading.Event()
+
+    def _call_from_worker():
+        result["backend"] = jb_module.jobs_backend_instance()
+        done.set()
+
+    try:
+        t = threading.Thread(target=_call_from_worker)
+        t.start()
+        deadline = time.monotonic() + 5.0
+        while not done.is_set() and time.monotonic() < deadline:
+            QApplication.processEvents()
+            time.sleep(0.01)
+        t.join(timeout=1)
+    finally:
+        sqp_threading.init_invoker(old_invoker)
+
+    assert "backend" in result, "construction did not complete from worker thread"
+    assert result["backend"].thread() == app.thread()

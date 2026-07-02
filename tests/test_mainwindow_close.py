@@ -77,3 +77,19 @@ def test_confirm_close_running_job_user_says_yes_proceeds(qapp, monkeypatch):
         None, event, [{"name": "11-year build", "status": "running"}])
     assert cancelled is False
     event.ignore.assert_not_called()
+
+
+def test_warn_if_jobs_running_fails_open_on_backend_error(qapp, monkeypatch):
+    from SciQLop.core.ui.mainwindow import SciQLopMainWindow
+
+    def _raise():
+        raise RuntimeError("backend unavailable")
+
+    monkeypatch.setattr(
+        "SciQLop.components.jobs.backend.jobs_backend.jobs_backend_instance", _raise)
+
+    win = SciQLopMainWindow.__new__(SciQLopMainWindow)  # bypass __init__, we only need the method
+    event = MagicMock()
+    cancelled = SciQLopMainWindow._warn_if_jobs_running(win, event)
+    assert cancelled is False
+    event.ignore.assert_not_called()

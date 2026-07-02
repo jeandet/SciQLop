@@ -504,7 +504,11 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
     def _warn_if_jobs_running(self, event: QCloseEvent) -> bool:
         from SciQLop.components.jobs.backend.jobs_backend import jobs_backend_instance
-        return _confirm_close_with_running_jobs(self, event, jobs_backend_instance().list_jobs())
+        try:
+            jobs = jobs_backend_instance().list_jobs()
+        except Exception:
+            return False
+        return _confirm_close_with_running_jobs(self, event, jobs)
 
     @staticmethod
     def _usable_event_loop():

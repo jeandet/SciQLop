@@ -4,6 +4,7 @@ of job records from disk and Qt signals for a future UI to subscribe to."""
 from __future__ import annotations
 
 import os
+import shlex
 import signal
 import subprocess
 import uuid
@@ -61,7 +62,7 @@ class JobsBackend(QObject):
         job_id = uuid.uuid4().hex[:12]
         log_path = d / f"{job_id}.log"
         marker_path = d / f"{job_id}.exit"
-        wrapper = f"{{ {command} ; }} > {log_path} 2>&1 ; echo $? > {marker_path}"
+        wrapper = f"{{ {command} ; }} > {shlex.quote(str(log_path))} 2>&1 ; echo $? > {shlex.quote(str(marker_path))}"
         proc = subprocess.Popen(["/bin/sh", "-c", wrapper],
                                 start_new_session=True, stdin=subprocess.DEVNULL)
         job = Job(id=job_id, name=name or command, command=command, pid=proc.pid,
@@ -101,13 +102,22 @@ class JobsBackend(QObject):
             pass
 
 
+def _construct_jobs_backend(app):
+    from SciQLop.components.workspaces import workspaces_manager_instance
+    from SciQLop.user_api.threading import on_main_thread
+
+    @on_main_thread
+    def _build():
+        return JobsBackend(
+            workspace_dir_getter=lambda: workspaces_manager_instance().workspace.workspace_dir,
+            parent=app)
+    return _build()
+
+
 def jobs_backend_instance() -> JobsBackend:
     from SciQLop.core.sciqlop_application import sciqlop_app
-    from SciQLop.components.workspaces import workspaces_manager_instance
 
     app = sciqlop_app()
     if not hasattr(app, "jobs_backend"):
-        app.jobs_backend = JobsBackend(
-            workspace_dir_getter=lambda: workspaces_manager_instance().workspace.workspace_dir,
-            parent=app)
+        app.jobs_backend = _construct_jobs_backend(app)
     return app.jobs_backend
