@@ -8,9 +8,12 @@ from html.parser import HTMLParser
 from speasy.core import http
 from speasy.core.cache import CacheCall
 
+from . import literature
+
 _FETCH_RETENTION = 604800  # 7 d — a published paper is immutable
 _MAX_CHARS = 40000
 _ARXIV_ID = re.compile(r"\d{4}\.\d{4,5}(?:v\d+)?|[a-z\-]+(?:\.[A-Z]{2})?/\d{7}(?:v\d+)?", re.I)
+_DOI_ID = re.compile(r"^10\.\d{4,9}/\S+$", re.I)
 
 
 def _msg(text: str) -> dict:
@@ -60,10 +63,7 @@ def _pdf_to_text(data: bytes) -> str:
     return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
-def _fetch_paper_impl(id_or_url: str) -> dict:
-    arxiv_id = _extract_arxiv_id(id_or_url)
-    if not arxiv_id:
-        return _msg(f"could not resolve an arXiv id from {id_or_url!r}")
+def _fetch_arxiv_paper(arxiv_id: str) -> dict:
     for url in (f"https://arxiv.org/html/{arxiv_id}", f"https://ar5iv.org/abs/{arxiv_id}"):
         try:
             r = http.get(url, timeout=45)
@@ -82,6 +82,30 @@ def _fetch_paper_impl(id_or_url: str) -> dict:
     except Exception:
         pass
     return _msg(f"could not retrieve full text for {arxiv_id}; use the abstract/DOI instead")
+
+
+def _classify_identifier(id_or_url: str) -> str:
+    s = (id_or_url or "").strip()
+    if _extract_arxiv_id(s):
+        return "arxiv"
+    if _DOI_ID.match(s):
+        return "doi"
+    return "bibcode"
+
+
+def _fetch_paper_impl(id_or_url: str) -> dict:
+    identifier = (id_or_url or "").strip()
+    kind = _classify_identifier(identifier)
+    if kind == "arxiv":
+        return _fetch_arxiv_paper(_extract_arxiv_id(identifier))
+    if not literature.ads_token():
+        return _msg("ADS token required to resolve DOI/bibcode identifiers — "
+                    "set one in settings or ADS_API_TOKEN")
+    resolved_arxiv_id = literature.resolve_via_ads(identifier, kind)
+    if not resolved_arxiv_id:
+        return _msg(f"no open-access full text found via ADS for {identifier!r}; "
+                    "only the abstract is available — provide the PDF directly if you have access")
+    return _fetch_arxiv_paper(resolved_arxiv_id)
 
 
 fetch_paper = CacheCall(cache_retention=_FETCH_RETENTION, is_pure=True)(_fetch_paper_impl)

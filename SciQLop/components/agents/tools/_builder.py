@@ -288,10 +288,14 @@ def _fetch_paper_tool() -> Dict[str, Any]:
     return _text_tool(
         "sciqlop_fetch_paper",
         (
-            "Fetch the full text of an arXiv paper by id or URL (e.g. '2401.01234' "
-            "or an arxiv.org link). Returns cleaned text from the HTML version, "
-            "falling back to the PDF. Long papers are truncated — ask for a "
-            "specific section if needed."
+            "Fetch the full text of a paper by arXiv id/URL, DOI, or ADS bibcode "
+            "(e.g. '2401.01234', an arxiv.org link, '10.3847/1538-4357/acaf6c', or "
+            "'2023ApJ...945...28R') — auto-detected. DOI/bibcode resolution goes "
+            "via NASA ADS and only succeeds when an open-access (usually arXiv) "
+            "copy exists; paywalled papers with no open-access copy report that "
+            "cleanly. Returns cleaned text from the HTML version, falling back to "
+            "the PDF. Long papers are truncated — ask for a specific section if "
+            "needed."
         ),
         {"type": "object", "properties": {"id_or_url": {"type": "string"}},
          "required": ["id_or_url"]},
