@@ -58,6 +58,7 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _read_notebook_tool(),
         _kernel_vars_tool(),
         _inspect_tool(),
+        _describe_tool(),
         _show_figure_tool(),
     ]
     tools.extend(_write_tools(main_window))
@@ -414,6 +415,102 @@ def _inspect_tool() -> Dict[str, Any]:
          "required": ["name"]},
         _run,
         thread=True,  # object_inspect does file I/O for docstrings; keep off the GUI thread
+    )
+
+
+def _make_resolve_index():
+    """Resolve a product identifier to a speasy ParameterIndex.
+
+    `//`-path → ProductsModel node → its speasy_id → flat-inventory lookup;
+    otherwise a speasy identifier: a dotted inventory path, or `provider/uid`.
+    Returns (index_or_None, note_or_None)."""
+    def _flat_lookup(provider: str, uid: str):
+        import speasy as spz
+        prov = getattr(spz.inventories.flat_inventories, provider, None)
+        params = getattr(prov, "parameters", None) if prov is not None else None
+        if params and uid in params:
+            return params[uid]
+        return None
+
+    def _from_speasy_id(spz_id: str):
+        provider, _, uid = spz_id.partition("/")
+        if uid:
+            hit = _flat_lookup(provider, uid)
+            if hit is not None:
+                return hit
+        # dotted inventory path fallback (e.g. cda.AC_H2_CRIS...)
+        import speasy as spz
+        node = spz.inventories.data_tree
+        for part in spz_id.split("."):
+            node = getattr(node, part, None)
+            if node is None:
+                return None
+        return node
+
+    def resolve(product: str):
+        if "//" in product:
+            from SciQLopPlots import ProductsModel
+            node = ProductsModel.instance().node([p for p in product.split("//") if p])
+            if node is None:
+                return None, f"product not found: {product}"
+            spz_id = node.metadata("speasy_id") if hasattr(node, "metadata") else None
+            if spz_id:
+                idx = _from_speasy_id(str(spz_id))
+                if idx is not None:
+                    return idx, None
+            return node, "(describing ProductsModel node metadata; no speasy ParameterIndex found)"
+        idx = _from_speasy_id(product)
+        if idx is None:
+            return None, f"product not found in speasy inventory: {product}"
+        return idx, None
+
+    return resolve
+
+
+def _describe_tool() -> Dict[str, Any]:
+    from . import describe
+
+    def _probe_fetch(index, t0: float, t1: float):
+        import speasy as spz
+        uid = describe._call(index, "spz_uid")
+        provider = describe._call(index, "spz_provider")
+        spz_id = f"{provider}/{uid}" if provider and uid else (uid or "")
+        return spz.get_data(spz_id, t0, t1)
+
+    resolve_index = _make_resolve_index()
+
+    def _run(payload: Dict[str, Any]) -> Any:
+        return describe.describe_product(
+            str(payload["product"]),
+            probe=bool(payload.get("probe", False)),
+            start=payload.get("start"), stop=payload.get("stop"),
+            resolve_index=resolve_index, probe_fetch=_probe_fetch,
+        )
+
+    return _text_tool(
+        "sciqlop_describe_product",
+        (
+            "Describe a product's metadata WITHOUT plotting/fetching it: units, "
+            "time coverage, dimensionality, fill value, component labels, plus a "
+            "raw-attribute dump. `product` is a `//`-path (from sciqlop_products_tree) "
+            "or a speasy id (provider/uid or dotted inventory path) — auto-detected. "
+            "Pass `probe=true` (with optional `start`/`stop`, ISO-8601 or POSIX seconds) "
+            "to sample a small window and report the REAL shape, fill value, coordinate "
+            "frame, median cadence and NaN-gap fraction within that window. Read-only. "
+            "Call before sciqlop_fetch."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "product": {"type": "string"},
+                "probe": {"type": "boolean"},
+                "start": {"type": ["string", "number"]},
+                "stop": {"type": ["string", "number"]},
+            },
+            "required": ["product"],
+        },
+        _run,
+        thread=True,  # inventory access / probe fetch block; keep off the GUI thread
     )
 
 
