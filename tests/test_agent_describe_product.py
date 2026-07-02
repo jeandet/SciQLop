@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class FakeIndex:
     """Stand-in for a speasy ParameterIndex. spz_* are methods; other
     attributes mimic raw provider metadata."""
@@ -65,9 +68,6 @@ def test_describe_unresolved_product_reports_cleanly(qtbot):
         "nope//bad", resolve_index=lambda p: (None, "product not found: nope//bad"),
         probe_fetch=lambda *a: None)
     assert "product not found" in out["content"][0]["text"]
-
-
-import numpy as np
 
 
 class FakeVar:

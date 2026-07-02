@@ -40,6 +40,7 @@ def normalize(index) -> Dict[str, Any]:
     provider = _call(index, "spz_provider")
     if provider:
         fields["provider"] = provider
+    consumed.update({"name", "uid", "provider"})
 
     uk, uv = _first(index, "units", "UNITS")
     if uk:

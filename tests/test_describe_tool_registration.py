@@ -37,9 +37,6 @@ def test_resolve_index_routes_speasy_uid(qtbot, monkeypatch):
     import SciQLop.components.agents.tools._builder as builder
     fake_index = object()
 
-    class _Params(dict):
-        pass
-
     class _Prov:
         parameters = {"AC_H2_CRIS/cnt_Al": fake_index}
 
