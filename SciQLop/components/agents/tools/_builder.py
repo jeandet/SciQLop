@@ -58,6 +58,7 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _read_notebook_tool(),
         _kernel_vars_tool(),
         _inspect_tool(),
+        _show_figure_tool(),
     ]
     tools.extend(_write_tools(main_window))
     return tools
@@ -413,6 +414,30 @@ def _inspect_tool() -> Dict[str, Any]:
          "required": ["name"]},
         _run,
         thread=True,  # object_inspect does file I/O for docstrings; keep off the GUI thread
+    )
+
+
+def _show_figure_tool() -> Dict[str, Any]:
+    from . import figure
+
+    def _run(_payload: Dict[str, Any]) -> Any:
+        png = figure.current_figure_png()
+        if png is None:
+            return _error_content("no active matplotlib figure in the kernel")
+        return {"content": [{"type": "image",
+                             "data": base64.b64encode(png).decode("ascii"),
+                             "mimeType": "image/png"}]}
+
+    return _text_tool(
+        "sciqlop_show_figure",
+        (
+            "Return the current matplotlib figure from the embedded kernel as a PNG. "
+            "Use after plotting with matplotlib in sciqlop_exec_python. Read-only; "
+            "reports cleanly when there is no active figure."
+        ),
+        {"type": "object", "properties": {}, "required": []},
+        _run,
+        thread=True,  # savefig does file/render work; keep off the GUI thread
     )
 
 
