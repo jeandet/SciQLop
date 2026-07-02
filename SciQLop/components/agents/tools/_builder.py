@@ -622,6 +622,14 @@ def _exec_python_tool() -> Dict[str, Any]:
     }
 
 
+def _truncate_traceback(text: str, head: int = 20, tail: int = 20, max_lines: int = 60) -> str:
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text
+    omitted = len(lines) - head - tail
+    return "\n".join(lines[:head] + [f"  … [{omitted} lines elided] …"] + lines[-tail:])
+
+
 def _format_exec_result(result: Dict[str, Any]) -> str:
     lines: List[str] = []
     if result.get("stdout"):
@@ -631,7 +639,7 @@ def _format_exec_result(result: Dict[str, Any]) -> str:
     if result.get("result") is not None:
         lines.append(f"result: {result['result']}")
     if not result.get("success") and result.get("error"):
-        lines.append(f"error: {result['error']}")
+        lines.append(f"error: {_truncate_traceback(str(result['error']))}")
     return "\n\n".join(lines) if lines else "ok (no output)"
 
 
