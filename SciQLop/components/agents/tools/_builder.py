@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional
 
 from SciQLop.user_api.threading import on_main_thread
+from SciQLop.user_api import jobs as user_api_jobs
 
 from . import context
 
@@ -60,6 +61,8 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _inspect_tool(),
         _describe_tool(),
         _show_figure_tool(),
+        _job_status_tool(),
+        _list_jobs_tool(),
     ]
     tools.extend(_write_tools(main_window))
     return tools
@@ -654,6 +657,81 @@ def _fetch_tool() -> Dict[str, Any]:
     )
 
 
+def _submit_job_tool() -> Dict[str, Any]:
+    def _run(payload: Dict[str, Any]) -> Any:
+        job_id = user_api_jobs.submit_job(str(payload["command"]), str(payload.get("name", "")))
+        return f"submitted job `{job_id}`"
+
+    return _text_tool(
+        "sciqlop_submit_job",
+        (
+            "Run a shell command as a DETACHED background job that survives "
+            "SciQLop closing or crashing (like `nohup ... &`) — use for long "
+            "builds, surveys, or downloads. Build the actual work first with "
+            "sciqlop_exec_python or a workspace script, then pass the command "
+            "that runs it here. Returns a job id — check progress later with "
+            "sciqlop_job_status or sciqlop_list_jobs, even in a future session."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "name": {"type": "string"},
+            },
+            "required": ["command"],
+        },
+        _run,
+        gated=True,
+        thread=True,
+    )
+
+
+def _job_status_tool() -> Dict[str, Any]:
+    return _text_tool(
+        "sciqlop_job_status",
+        (
+            "Check a background job's status: 'running', 'done', or 'crashed', "
+            "plus exit code and a tail of its output log. Works across SciQLop "
+            "restarts — the job keeps running (or its result stays available) "
+            "even if SciQLop was closed since it was submitted."
+        ),
+        {"type": "object", "properties": {"job_id": {"type": "string"}},
+         "required": ["job_id"]},
+        lambda p: str(user_api_jobs.job_status(str(p["job_id"]))),
+        thread=True,
+    )
+
+
+def _list_jobs_tool() -> Dict[str, Any]:
+    return _text_tool(
+        "sciqlop_list_jobs",
+        (
+            "List every known background job (including ones submitted in a "
+            "prior SciQLop session) with its current status. Use this to "
+            "rediscover work you don't remember the job id for."
+        ),
+        {"type": "object", "properties": {}, "required": []},
+        lambda _p: str(user_api_jobs.list_jobs()),
+        thread=True,
+    )
+
+
+def _cancel_job_tool() -> Dict[str, Any]:
+    def _run(payload: Dict[str, Any]) -> Any:
+        user_api_jobs.cancel_job(str(payload["job_id"]))
+        return f"sent SIGTERM to job `{payload['job_id']}`"
+
+    return _text_tool(
+        "sciqlop_cancel_job",
+        "Cancel a running background job (sends SIGTERM to its process).",
+        {"type": "object", "properties": {"job_id": {"type": "string"}},
+         "required": ["job_id"]},
+        _run,
+        gated=True,
+        thread=True,
+    )
+
+
 def _write_tools(main_window) -> List[Dict[str, Any]]:
     @on_main_thread
     def _set_time_range(name: Optional[str], start: float, stop: float):
@@ -686,7 +764,7 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
     )
 
     return [set_time_range, _create_panel_tool(main_window), _exec_python_tool(),
-            _fetch_tool(), _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
+            _fetch_tool(), _submit_job_tool(), _cancel_job_tool(), _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
