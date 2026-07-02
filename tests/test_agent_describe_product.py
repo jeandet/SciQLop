@@ -115,6 +115,17 @@ def test_probe_default_window_used_when_no_start_stop(qtbot):
     assert seen and (seen["t1"] - seen["t0"]) == 86400.0
 
 
+def test_probe_median_cadence_handles_epoch_seconds_time(qtbot):
+    from SciQLop.components.agents.tools.describe import describe_product
+    times = np.array([0.0, 60.0, 120.0, 180.0])  # already epoch seconds, not datetime64
+    var = FakeVar([1.0, 2.0, 3.0, 4.0], times)
+    out = describe_product(
+        "cda/x", probe=True, start=0, stop=180,
+        resolve_index=lambda p: (_cda_index(), None),
+        probe_fetch=lambda index, t0, t1: var)
+    assert "median_cadence_s**: 60.0" in out["content"][0]["text"]
+
+
 def test_probe_failure_falls_back_to_metadata(qtbot):
     from SciQLop.components.agents.tools.describe import describe_product
 

@@ -23,6 +23,33 @@ def cadence_seconds(cadence: str) -> float:
     return float(pd.Timedelta(cadence).total_seconds())
 
 
+def _row_invalid(vals: np.ndarray) -> np.ndarray:
+    if vals.ndim <= 1:
+        return ~np.isfinite(vals)
+    return ~np.isfinite(vals).all(axis=tuple(range(1, vals.ndim)))
+
+
+def _gap_windows(invalid: np.ndarray, times: np.ndarray, max_windows: int = 3):
+    """Contiguous invalid-sample runs as (start, stop) time pairs, capped at
+    max_windows. Returns (windows, total_run_count)."""
+    if not invalid.any() or times.shape[0] != invalid.shape[0]:
+        return [], 0
+    padded = np.concatenate(([False], invalid, [False]))
+    edges = np.flatnonzero(np.diff(padded.astype(np.int8)))
+    starts, stops = edges[0::2], edges[1::2] - 1
+    windows = list(zip(times[starts[:max_windows]], times[stops[:max_windows]]))
+    return windows, len(starts)
+
+
+def _gap_text(vals: np.ndarray, times: np.ndarray) -> str:
+    windows, total = _gap_windows(_row_invalid(vals), times)
+    if not windows:
+        return ""
+    shown = "; ".join(f"{s}→{e}" for s, e in windows)
+    more = f" (+{total - len(windows)} more)" if total > len(windows) else ""
+    return f", gaps: {shown}{more}"
+
+
 def _stats(var) -> str:
     vals = np.asarray(getattr(var, "values", []))
     if vals.dtype.kind not in "fiu" or vals.size == 0:
@@ -35,7 +62,8 @@ def _stats(var) -> str:
         rng = f", min/mean/max={lo:.3g}/{mean:.3g}/{hi:.3g}"
     else:
         rng = ""
-    return f", coverage {coverage:.1f}%, fills {fills}{rng}"
+    gaps = _gap_text(vals, np.asarray(getattr(var, "time", [])))
+    return f", coverage {coverage:.1f}%, fills {fills}{rng}{gaps}"
 
 
 def _var_line(short: str, var) -> str:

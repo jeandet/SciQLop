@@ -140,16 +140,18 @@ def test_all_fail_binds_nothing(qtbot):
 
 
 def test_preview_appends_image_block(qtbot):
+    import base64
     from SciQLop.components.agents.tools.fetch import fetch_products
     ns = {}
     out = fetch_products(["p"], 0.0, 4.0, "P", ns, cadence=None, overwrite=False,
                          preview=True,
                          fetch_one=lambda *a: [FakeVar("B", [1.0, 2.0, 3.0, 4.0], _times(4))],
                          grid_interpolate=lambda r, v: v)
-    kinds = [c["type"] for c in out["content"]]
-    assert "image" in kinds
-    img = next(c for c in out["content"] if c["type"] == "image")
-    assert img["mimeType"] == "image/png" and img["data"]
+    assert [c["type"] for c in out["content"]] == ["text", "image"]  # text first, then thumbnail
+    img = out["content"][1]
+    assert img["mimeType"] == "image/png"
+    png = base64.b64decode(img["data"])
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")  # valid PNG signature
 
 
 def test_no_preview_by_default_is_text_only(qtbot):
@@ -159,6 +161,40 @@ def test_no_preview_by_default_is_text_only(qtbot):
                          fetch_one=lambda *a: [FakeVar("B", [1.0], _times(1))],
                          grid_interpolate=lambda r, v: v)
     assert [c["type"] for c in out["content"]] == ["text"]
+
+
+def test_stats_reports_a_gap_window(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    var = FakeVar("B", [1.0, 2.0, np.nan, np.nan, 5.0], _times(5))
+    out = fetch_products(["p"], 0.0, 5.0, "G", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: [var], grid_interpolate=lambda r, v: v)
+    text = out["content"][0]["text"]
+    assert "gaps: 1970-01-01T00:00:02→1970-01-01T00:00:03" in text
+
+
+def test_stats_caps_gap_windows_and_reports_remainder(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    n = 20
+    vals = [1.0] * n
+    for i in range(1, n, 4):  # 5 isolated single-sample gaps
+        vals[i] = np.nan
+    var = FakeVar("B", vals, _times(n))
+    out = fetch_products(["p"], 0.0, float(n), "G", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: [var], grid_interpolate=lambda r, v: v)
+    text = out["content"][0]["text"]
+    assert text.count("→") == 3   # capped at 3 windows
+    assert "(+2 more)" in text    # 5 total, 2 remaining
+
+
+def test_stats_omits_gaps_when_fully_covered(qtbot):
+    from SciQLop.components.agents.tools.fetch import fetch_products
+    ns = {}
+    var = FakeVar("B", [1.0, 2.0, 3.0], _times(3))
+    out = fetch_products(["p"], 0.0, 3.0, "G", ns, cadence=None, overwrite=False,
+                         fetch_one=lambda *a: [var], grid_interpolate=lambda r, v: v)
+    assert "gaps:" not in out["content"][0]["text"]
 
 
 def test_post_fetch_error_does_not_sink_batch(qtbot):

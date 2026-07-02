@@ -173,6 +173,24 @@ def test_resolve_via_ads_no_docs_returns_none(qtbot, monkeypatch):
     assert lit._resolve_via_ads_impl("nonexistent", "bibcode") is None
 
 
+def test_resolve_via_ads_escapes_quotes_in_doi(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+    calls = []
+
+    class _Resp:
+        ok = True
+        def json(self):
+            return {"response": {"docs": []}}
+
+    def _get(url, headers=None, params=None, timeout=0):
+        calls.append(params)
+        return _Resp()
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", _get)
+    lit._resolve_via_ads_impl('10.1/ab"c', "doi")
+    assert calls[0]["q"] == 'doi:"10.1/ab\\"c"'  # embedded quote escaped, doesn't break out of the field
+
+
 def test_resolve_via_ads_builds_correct_query_for_doi_and_bibcode(qtbot, monkeypatch):
     lit = _lit(qtbot)
     calls = []

@@ -1,4 +1,5 @@
-"""Fetch the full text of an arXiv paper (HTML, falling back to PDF)."""
+"""Fetch a paper's full text: arXiv id/URL directly (HTML, falling back to
+PDF), or a DOI/bibcode resolved to an open-access arXiv copy via ADS."""
 from __future__ import annotations
 
 import io
@@ -95,9 +96,10 @@ def _classify_identifier(id_or_url: str) -> str:
 
 def _fetch_paper_impl(id_or_url: str) -> dict:
     identifier = (id_or_url or "").strip()
-    kind = _classify_identifier(identifier)
-    if kind == "arxiv":
-        return _fetch_arxiv_paper(_extract_arxiv_id(identifier))
+    arxiv_id = _extract_arxiv_id(identifier)
+    if arxiv_id:
+        return _fetch_arxiv_paper(arxiv_id)
+    kind = _classify_identifier(identifier)  # arxiv already handled above → "doi" or "bibcode"
     if not literature.ads_token():
         return _msg("ADS token required to resolve DOI/bibcode identifiers — "
                     "set one in settings or ADS_API_TOKEN")

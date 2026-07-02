@@ -115,7 +115,11 @@ def _resolve_via_ads_impl(identifier: str, kind: str) -> Optional[str]:
     token = ads_token()
     if not token:
         return None
-    q = f'doi:"{identifier}"' if kind == "doi" else f"bibcode:{identifier}"
+    if kind == "doi":
+        escaped = identifier.replace("\\", "\\\\").replace('"', '\\"')
+        q = f'doi:"{escaped}"'
+    else:
+        q = f"bibcode:{identifier}"
     r = http.get("https://api.adsabs.harvard.edu/v1/search/query",
                  headers={"Authorization": f"Bearer {token}"},
                  params={"q": q, "rows": "1", "fl": "identifier"}, timeout=30)

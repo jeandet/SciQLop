@@ -98,8 +98,9 @@ def _resolve_path(target, start: float, stop: float):
 
 
 def resolve_product_path(target, start: float, stop: float):
-    """Public entry point: resolve a `//`-path (or list) to provider data,
-    with no dependency pad. Reuses the VP dependency resolver."""
+    """Public entry point: resolve a `//`-path (or list of paths) to provider
+    data for [start, stop]. Thin wrapper over the VP dependency resolver,
+    without the extra time padding `Depends(pad=...)` applies for VP callbacks."""
     return _resolve_path(target, start, stop)
 
 

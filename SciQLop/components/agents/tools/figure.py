@@ -1,7 +1,11 @@
 """Return the current matplotlib figure from the embedded kernel as PNG.
 
 The embedded kernel shares this process, so pyplot's global figure registry is
-the same module singleton — no need to round-trip through the kernel.
+the same module singleton — no need to round-trip through the kernel. The
+`sciqlop_show_figure` tool runs this off the GUI thread (`thread=True`), so it
+reads/renders pyplot's global state from an I/O-pool worker thread rather than
+the GUI thread; benign under the GIL since matplotlib's Agg backend used here
+does no Qt calls, but this module must stay Qt-free.
 """
 from __future__ import annotations
 

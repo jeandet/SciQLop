@@ -130,6 +130,17 @@ def _default_window(index) -> Optional[Tuple[float, float]]:
     return (t1 - 86400.0, t1)
 
 
+def _median_cadence_seconds(t: np.ndarray) -> Optional[float]:
+    if t.size < 2:
+        return None
+    diffs = np.diff(t)
+    if diffs.dtype.kind == "m":  # timedelta64 (t was datetime64)
+        seconds = diffs.astype("timedelta64[ns]").astype(float) / 1e9
+    else:  # already numeric (e.g. epoch seconds)
+        seconds = diffs.astype(float)
+    return round(float(np.median(seconds)), 3)
+
+
 def probe_summary(var) -> Dict[str, Any]:
     vals = np.asarray(getattr(var, "values", []))
     info: Dict[str, Any] = {"sampled_shape": tuple(vals.shape)}
@@ -141,10 +152,9 @@ def probe_summary(var) -> Dict[str, Any]:
         if k in meta:
             info["frame"] = meta[k]
             break
-    t = np.asarray(getattr(var, "time", []))
-    if t.size >= 2:
-        dt = np.median(np.diff(t).astype("timedelta64[ns]").astype(float)) / 1e9
-        info["median_cadence_s"] = round(dt, 3)
+    dt = _median_cadence_seconds(np.asarray(getattr(var, "time", [])))
+    if dt is not None:
+        info["median_cadence_s"] = dt
     if vals.dtype.kind in "fiu" and vals.size:
         gap = 100.0 * (~np.isfinite(vals)).sum() / vals.size
         info["nan_gap_pct_in_window"] = round(gap, 1)
