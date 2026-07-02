@@ -9,7 +9,7 @@ import PySide6QtAds as QtAds
 import shiboken6
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtGui import QCloseEvent, QIcon
-from PySide6.QtWidgets import QWidget, QMenu
+from PySide6.QtWidgets import QWidget, QMenu, QMessageBox
 
 from SciQLop.components.workspaces import workspaces_manager_instance
 from SciQLop.components.sciqlop_logging.logs_widget import LogsWidget
@@ -50,6 +50,24 @@ def _extract_panel(dock_widget):
 
 def _surface(size: QtCore.QSize):
     return size.width() * size.height()
+
+
+def _confirm_close_with_running_jobs(parent, event, jobs: list) -> bool:
+    """Warn if any job is still running. Returns True if the close was
+    cancelled (event.ignore() already called)."""
+    running = [j for j in jobs if j.get("status") == "running"]
+    if not running:
+        return False
+    names = ", ".join(j["name"] for j in running)
+    reply = QMessageBox.question(
+        parent, "Jobs still running",
+        f"{len(running)} job(s) are still running and will continue in the "
+        f"background: {names}. Close anyway?",
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+    if reply == QMessageBox.No:
+        event.ignore()
+        return True
+    return False
 
 
 class SciQLopMainWindow(QtWidgets.QMainWindow):
@@ -473,6 +491,8 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
                 self.showFullScreen()
 
     def closeEvent(self, event: QCloseEvent):
+        if not getattr(self, '_closing', False) and self._warn_if_jobs_running(event):
+            return
         if not getattr(self, '_closing', False):
             self._closing = True
             if self._schedule_async_close():
@@ -481,6 +501,10 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
             self._close_plugins_sync()
         workspaces_manager_instance().quit()
         super().closeEvent(event)
+
+    def _warn_if_jobs_running(self, event: QCloseEvent) -> bool:
+        from SciQLop.components.jobs.backend.jobs_backend import jobs_backend_instance
+        return _confirm_close_with_running_jobs(self, event, jobs_backend_instance().list_jobs())
 
     @staticmethod
     def _usable_event_loop():

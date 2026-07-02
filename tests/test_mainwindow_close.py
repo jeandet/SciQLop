@@ -5,6 +5,7 @@ At pytest session teardown the current loop is absent or never ran;
 half-closed and erroring the last test's teardown.
 """
 import asyncio
+from unittest.mock import MagicMock
 
 from .fixtures import *
 
@@ -46,3 +47,33 @@ def test_usable_event_loop_detects_running_loop(qapp):
         loop.close()
     finally:
         asyncio.set_event_loop(prev)
+
+
+def test_confirm_close_no_running_jobs_proceeds(qapp):
+    from SciQLop.core.ui.mainwindow import _confirm_close_with_running_jobs
+    event = MagicMock()
+    cancelled = _confirm_close_with_running_jobs(None, event, [{"name": "x", "status": "done"}])
+    assert cancelled is False
+    event.ignore.assert_not_called()
+
+
+def test_confirm_close_running_job_user_says_no_cancels(qapp, monkeypatch):
+    from SciQLop.core.ui.mainwindow import _confirm_close_with_running_jobs
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    event = MagicMock()
+    cancelled = _confirm_close_with_running_jobs(
+        None, event, [{"name": "11-year build", "status": "running"}])
+    assert cancelled is True
+    event.ignore.assert_called_once()
+
+
+def test_confirm_close_running_job_user_says_yes_proceeds(qapp, monkeypatch):
+    from SciQLop.core.ui.mainwindow import _confirm_close_with_running_jobs
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    event = MagicMock()
+    cancelled = _confirm_close_with_running_jobs(
+        None, event, [{"name": "11-year build", "status": "running"}])
+    assert cancelled is False
+    event.ignore.assert_not_called()
