@@ -123,3 +123,71 @@ def test_search_ads_impl_no_token_returns_empty(qtbot, monkeypatch):
     monkeypatch.setattr(lit.http, "get",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("http called without token")))
     assert lit._search_ads_impl("turbulence", 3) == []
+
+
+def test_resolve_via_ads_finds_arxiv_id(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+
+    class _Resp:
+        ok = True
+        def json(self):
+            return {"response": {"docs": [{"identifier": [
+                "2023arXiv230100903R", "2023ApJ...945...28R",
+                "10.3847/1538-4357/acaf6c", "10.48550/arXiv.2301.00903",
+                "arXiv:2301.00903"]}]}}
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", lambda *a, **k: _Resp())
+    assert lit._resolve_via_ads_impl("10.3847/1538-4357/acaf6c", "doi") == "2301.00903"
+
+
+def test_resolve_via_ads_no_arxiv_entry_returns_none(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+
+    class _Resp:
+        ok = True
+        def json(self):
+            return {"response": {"docs": [{"identifier": [
+                "2008JGRA..113.7216D", "10.1029/2007JA012998"]}]}}
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", lambda *a, **k: _Resp())
+    assert lit._resolve_via_ads_impl("2008JGRA..113.7216D", "bibcode") is None
+
+
+def test_resolve_via_ads_no_token_returns_none_without_http_call(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+    monkeypatch.setattr(lit, "ads_token", lambda: None)
+    monkeypatch.setattr(lit.http, "get",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("http called without token")))
+    assert lit._resolve_via_ads_impl("2008JGRA..113.7216D", "bibcode") is None
+
+
+def test_resolve_via_ads_no_docs_returns_none(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+
+    class _Resp:
+        ok = True
+        def json(self):
+            return {"response": {"docs": []}}
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", lambda *a, **k: _Resp())
+    assert lit._resolve_via_ads_impl("nonexistent", "bibcode") is None
+
+
+def test_resolve_via_ads_builds_correct_query_for_doi_and_bibcode(qtbot, monkeypatch):
+    lit = _lit(qtbot)
+    calls = []
+
+    class _Resp:
+        ok = True
+        def json(self):
+            return {"response": {"docs": []}}
+
+    def _get(url, headers=None, params=None, timeout=0):
+        calls.append(params)
+        return _Resp()
+    monkeypatch.setattr(lit, "ads_token", lambda: "tok")
+    monkeypatch.setattr(lit.http, "get", _get)
+    lit._resolve_via_ads_impl("10.3847/1538-4357/acaf6c", "doi")
+    lit._resolve_via_ads_impl("2023ApJ...945...28R", "bibcode")
+    assert calls[0]["q"] == 'doi:"10.3847/1538-4357/acaf6c"'
+    assert calls[1]["q"] == "bibcode:2023ApJ...945...28R"

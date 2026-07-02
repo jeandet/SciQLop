@@ -105,6 +105,33 @@ def _search_ads_impl(query: str, max_results: int) -> List[Paper]:
 
 search_ads = CacheCall(cache_retention=_SEARCH_RETENTION, is_pure=True)(_search_ads_impl)
 
+_ADS_LOOKUP_RETENTION = 604800  # 7 d — same immutable-paper assumption as fetch_paper
+
+
+def _resolve_via_ads_impl(identifier: str, kind: str) -> Optional[str]:
+    """Resolve a DOI or ADS bibcode to an arXiv id when an open-access copy
+    exists. Returns None if there's no token, no record, or no open-access
+    (arXiv) copy — NASA ADS only indexes abstracts for paywalled journals."""
+    token = ads_token()
+    if not token:
+        return None
+    q = f'doi:"{identifier}"' if kind == "doi" else f"bibcode:{identifier}"
+    r = http.get("https://api.adsabs.harvard.edu/v1/search/query",
+                 headers={"Authorization": f"Bearer {token}"},
+                 params={"q": q, "rows": "1", "fl": "identifier"}, timeout=30)
+    if not r.ok:
+        return None
+    docs = (r.json().get("response") or {}).get("docs") or []
+    if not docs:
+        return None
+    for ident in docs[0].get("identifier") or []:
+        if ident.startswith("arXiv:"):
+            return ident[len("arXiv:"):]
+    return None
+
+
+resolve_via_ads = CacheCall(cache_retention=_ADS_LOOKUP_RETENTION, is_pure=True)(_resolve_via_ads_impl)
+
 
 def _render_paper(p: Paper) -> str:
     authors = ", ".join(p.authors[:6]) + (" et al." if len(p.authors) > 6 else "")
