@@ -75,3 +75,46 @@ def test_plot_function_name_hint_from_function_name(plot_panel):
     _, graph2 = plot_panel.plot_function(
         lambda s, e: (np.array([s, e]), np.array([0.0, 1.0])))
     assert graph2._get_impl_or_raise().name != "my_signal"  # <lambda> is skipped
+
+
+def test_plot_data_forwards_set_params_only(plot_panel, monkeypatch):
+    captured = _capture_panel_fn(monkeypatch, "_plot_static_data")
+    x = np.linspace(0, 1, 20)
+    y = np.column_stack([np.sin(x), np.cos(x)])
+    plot_panel.plot_data(x, y, labels=["a", "b"], colors=["#ff0000", "#00ff00"])
+    assert captured["labels"] == ["a", "b"]
+    assert captured["colors"] == ["#ff0000", "#00ff00"]
+    assert "y_log_scale" not in captured
+
+
+def test_plot_data_promoted_params_are_keyword_only():
+    # The brief's originally proposed regression test tried to prove
+    # keyword-only-ness via `plot_data(x, y, -1, ["a"])` raising TypeError.
+    # Verified against both the pre- and post-promotion code: that call
+    # binds positionally to `z=-1, plot_index=["a"]` in *both* versions
+    # (plot_data's own `z`/`plot_index` occupy positions 3-4, not `labels`)
+    # and raises the same ValueError from `ensure_arrays_of_double` either
+    # way — it does not exercise the keyword-only promotion at all. The
+    # actual, verifiable contract is checked directly on the signature.
+    import inspect
+    from SciQLop.user_api.plot._panel import PlotPanel
+
+    sig = inspect.signature(PlotPanel.plot_data)
+    for name in ("labels", "name", "plot_type", "graph_type", "colors",
+                "y_log_scale", "z_log_scale"):
+        assert sig.parameters[name].kind == inspect.Parameter.KEYWORD_ONLY
+
+
+def test_plot_data_name_applied_without_forwarding(plot_panel, monkeypatch):
+    # `name` is applied via `set_name()` on the created graph rather than
+    # forwarded through kwargs to `_plot_static_data`: SciQLopPlots' line()
+    # binding (used here since `y` is 1-D/2-D, i.e. no `z`) rejects an
+    # upfront `name=` keyword — only colormap() accepts it — verified
+    # directly against SciQLopPlots 0.29.2, same constraint already hit by
+    # `plot_function` in Task 2.
+    captured = _capture_panel_fn(monkeypatch, "_plot_static_data")
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    _, graph = plot_panel.plot_data(x, y, name="my_line")
+    assert "name" not in captured
+    assert graph._get_impl_or_raise().name == "my_line"
