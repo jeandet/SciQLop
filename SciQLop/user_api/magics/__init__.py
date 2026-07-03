@@ -9,7 +9,10 @@ def register_all_magics(shell):
     from SciQLop.user_api.magics.timerange_magic import timerange_magic
     from SciQLop.user_api.magics.install_magic import install_magic
     from SciQLop.user_api.magics.workspace_magic import workspace_magic
-    from SciQLop.user_api.magics.completions import _match_plot, _match_timerange, _match_vp, _match_workspace
+    from SciQLop.user_api.magics.job_magic import job_magic
+    from SciQLop.user_api.magics.completions import (
+        _match_plot, _match_timerange, _match_vp, _match_workspace, _match_job,
+    )
 
     shell.register_magic_function(vp_magic, magic_kind="cell", magic_name="vp")
     shell.register_magic_function(layer_magic, magic_kind="cell", magic_name="layer")
@@ -17,9 +20,11 @@ def register_all_magics(shell):
     shell.register_magic_function(timerange_magic, magic_kind="line", magic_name="timerange")
     shell.register_magic_function(install_magic, magic_kind="line", magic_name="install")
     shell.register_magic_function(workspace_magic, magic_kind="line", magic_name="workspace")
+    shell.register_magic_function(job_magic, magic_kind="line", magic_name="job")
 
     # Matcher API v2 — works across JupyterLab, QtConsole, and terminal
     shell.Completer.custom_matchers.append(_match_plot)
     shell.Completer.custom_matchers.append(_match_timerange)
     shell.Completer.custom_matchers.append(_match_vp)
     shell.Completer.custom_matchers.append(_match_workspace)
+    shell.Completer.custom_matchers.append(_match_job)

@@ -190,3 +190,34 @@ def _match_workspace(context):
         return _make_result(_complete_examples(token))
 
     return _make_result([])
+
+
+def _complete_job_ids(prefix: str) -> list[str]:
+    """Return known job ids matching *prefix*."""
+    from SciQLop.user_api.jobs import list_jobs
+    prefix_lower = prefix.lower()
+    return [j["id"] for j in list_jobs() if j["id"].lower().startswith(prefix_lower)]
+
+
+@_v2
+def _match_job(context):
+    """Matcher for %job: subcommand names on the first token, job ids for status/cancel."""
+    line = context.line_with_cursor
+    if not line.lstrip().startswith("%job "):
+        return _make_result([])
+    parts = _shlex_split_partial(line)
+    token = context.token
+    from SciQLop.user_api.magics.job_magic import SUBCOMMANDS
+
+    has_subcmd = len(parts) >= 2 and parts[1] in SUBCOMMANDS
+    past_subcmd = has_subcmd and (len(parts) > 2 or (len(parts) == 2 and line.rstrip() != line))
+
+    if not past_subcmd:
+        token_lower = token.lower()
+        return _make_result([s for s in SUBCOMMANDS if s.startswith(token_lower)])
+
+    subcmd = parts[1]
+    if subcmd in ("status", "cancel"):
+        return _make_result(_complete_job_ids(token))
+
+    return _make_result([])

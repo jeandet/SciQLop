@@ -217,3 +217,65 @@ class TestMatchVp:
         from SciQLop.user_api.magics.completions import _match_vp
         result = _match_vp(_ctx("print('hello')", "hello"))
         assert _texts(result) == []
+
+
+class TestJobCompletion:
+    def test_completer_returns_subcommands(self):
+        from SciQLop.user_api.magics.completions import _match_job
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%job "
+        ctx.token = ""
+        result = _match_job(ctx)
+        texts = [c.text for c in result["completions"]]
+        assert "submit" in texts
+        assert "status" in texts
+        assert "list" in texts
+        assert "cancel" in texts
+
+    def test_completer_filters_subcommands(self):
+        from SciQLop.user_api.magics.completions import _match_job
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%job sta"
+        ctx.token = "sta"
+        result = _match_job(ctx)
+        texts = [c.text for c in result["completions"]]
+        assert "status" in texts
+        assert "list" not in texts
+
+    def test_completer_ignores_other_magics(self):
+        from SciQLop.user_api.magics.completions import _match_job
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%plot something"
+        ctx.token = "something"
+        result = _match_job(ctx)
+        assert len(result["completions"]) == 0
+
+    @patch("SciQLop.user_api.jobs.list_jobs")
+    def test_status_completes_job_ids(self, mock_list):
+        from SciQLop.user_api.magics.completions import _match_job
+        mock_list.return_value = [{"id": "abc123"}, {"id": "def456"}]
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%job status ab"
+        ctx.token = "ab"
+        result = _match_job(ctx)
+        texts = [c.text for c in result["completions"]]
+        assert texts == ["abc123"]
+
+    @patch("SciQLop.user_api.jobs.list_jobs")
+    def test_cancel_completes_job_ids(self, mock_list):
+        from SciQLop.user_api.magics.completions import _match_job
+        mock_list.return_value = [{"id": "abc123"}]
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%job cancel "
+        ctx.token = ""
+        result = _match_job(ctx)
+        texts = [c.text for c in result["completions"]]
+        assert "abc123" in texts
+
+    def test_no_id_completion_for_list(self):
+        from SciQLop.user_api.magics.completions import _match_job
+        ctx = MagicMock()
+        ctx.line_with_cursor = "%job list "
+        ctx.token = ""
+        result = _match_job(ctx)
+        assert len(result["completions"]) == 0
