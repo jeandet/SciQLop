@@ -557,7 +557,7 @@ def _orbit_bodies_frames_tool() -> Dict[str, Any]:
         ),
         {"type": "object", "properties": {}, "required": []},
         lambda _p: orbits.bodies_and_frames(),
-        thread=True,
+        thread=True,  # 3DView HTTP blocks; keep it off the GUI event loop
     )
 
 
@@ -604,7 +604,7 @@ def _ephemeris_tool() -> Dict[str, Any]:
         },
         _run,
         gated=True,
-        thread=True,
+        thread=True,  # 3DView HTTP blocks; keep it off the GUI event loop
     )
 
 
@@ -652,7 +652,7 @@ def _transform_tool() -> Dict[str, Any]:
         },
         _run,
         gated=True,
-        thread=True,
+        thread=True,  # 3DView HTTP blocks; keep it off the GUI event loop
     )
 
 
