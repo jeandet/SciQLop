@@ -4,6 +4,7 @@ import pytest
 from .fixtures import *
 
 from SciQLop.user_api.plot._graphs import _UNSET, _with_explicit
+from SciQLop.user_api.plot import PlotPanel
 
 
 def test_with_explicit_forwards_set_values():
@@ -185,3 +186,18 @@ def test_plot_product_forwards_plot_type_and_graph_type(plot_panel, simple_vp_ca
     assert plot is not None
     assert graph is not None
     assert captured["graph_type"] == _GraphType.Line
+
+
+def test_plot_omnibus_still_dispatches_and_forwards(plot_panel, monkeypatch):
+    captured = _capture_panel_fn(monkeypatch, "_plot_function")
+
+    def f(start, stop):
+        x = np.linspace(start, stop, 10)
+        return x, np.sin(x)
+
+    plot_panel.plot(f, labels=["s"])           # routes to plot_function
+    assert captured["labels"] == ["s"]
+
+
+def test_plot_has_docstring():
+    assert (PlotPanel.plot.__doc__ or "").strip(), "plot() must document its options"

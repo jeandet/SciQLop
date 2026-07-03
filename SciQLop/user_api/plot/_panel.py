@@ -392,6 +392,26 @@ class PlotPanel:
 
     @on_main_thread
     def plot(self, *args, plot_index=-1, **kwargs) -> Tuple[ProjectionPlot | TimeSeriesPlot, Plottable] | None:
+        """Omnibus plotting entry point — dispatches on argument type.
+
+        Accepts, and forwards ``**kwargs`` to the matching typed method:
+
+        - ``plot(speasy_variable, ...)``         → :meth:`plot_data`
+        - ``plot(product, ...)``                 → :meth:`plot_product`
+          (``str`` / list of ``str`` / ``VirtualProduct``)
+        - ``plot(callable, ...)``                → :meth:`plot_function`
+        - ``plot(x, y[, z], ...)``               → :meth:`plot_data`
+
+        For documented, discoverable options (``labels``, ``name``,
+        ``plot_type``, ``graph_type``, ``colors``, ``y_log_scale``,
+        ``z_log_scale``) prefer the typed methods — they list these in their
+        signatures. Any of them may also be passed here as keyword arguments
+        and are forwarded unchanged.
+
+        Returns
+        -------
+        Tuple[Plot, Plottable] or None
+        """
         if len(args) == 1 and isinstance(args[0], _SpeasyVariable):
             return self.plot_data(args[0], plot_index=plot_index, **kwargs)
         if len(args) <= 1:  # product or callable
