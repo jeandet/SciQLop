@@ -63,6 +63,7 @@ def build_sciqlop_tools(main_window) -> List[Dict[str, Any]]:
         _show_figure_tool(),
         _job_status_tool(),
         _list_jobs_tool(),
+        _orbit_bodies_frames_tool(),
     ]
     tools.extend(_write_tools(main_window))
     return tools
@@ -545,6 +546,116 @@ def _show_figure_tool() -> Dict[str, Any]:
     )
 
 
+def _orbit_bodies_frames_tool() -> Dict[str, Any]:
+    from . import orbits
+    return _text_tool(
+        "sciqlop_orbit_bodies_and_frames",
+        (
+            "List valid body names (spacecraft, planets, small bodies) and frame "
+            "names accepted by sciqlop_ephemeris/sciqlop_transform, from the CDPP "
+            "3DView service. Cached — call before guessing a body/frame name."
+        ),
+        {"type": "object", "properties": {}, "required": []},
+        lambda _p: orbits.bodies_and_frames(),
+        thread=True,
+    )
+
+
+def _ephemeris_tool() -> Dict[str, Any]:
+    from . import orbits
+    from speasy.core import http
+
+    def _run(payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        return orbits.fetch_ephemeris(
+            str(payload["body"]), payload.get("frame"),
+            payload["start"], payload["stop"], payload.get("sampling"),
+            str(payload["name"]), km.shell.user_ns,
+            overwrite=bool(payload.get("overwrite", False)),
+            http_get=http.get,
+        )
+
+    return _text_tool(
+        "sciqlop_ephemeris",
+        (
+            "Fetch a spacecraft/planet/small-body's position (km) and velocity "
+            "(km/s) into the embedded kernel under `name`, from the CDPP 3DView "
+            "service. `body`/`frame` — call sciqlop_orbit_bodies_and_frames first "
+            "if unsure of valid names; `frame` defaults to J2000. `start`/`stop` "
+            "are ISO-8601 strings or POSIX seconds. `sampling` is the step in "
+            "seconds (default 3600). Binds `{'position': ..., 'speed': ...}` "
+            "(SpeasyVariable, columns X/Y/Z and Vx/Vy/Vz) — never returns raw "
+            "arrays. Errors if `name` exists unless `overwrite=true`."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "body": {"type": "string"},
+                "frame": {"type": "string"},
+                "start": {"type": ["string", "number"]},
+                "stop": {"type": ["string", "number"]},
+                "sampling": {"type": "integer"},
+                "name": {"type": "string"},
+                "overwrite": {"type": "boolean"},
+            },
+            "required": ["body", "start", "stop", "name"],
+        },
+        _run,
+        gated=True,
+        thread=True,
+    )
+
+
+def _transform_tool() -> Dict[str, Any]:
+    from . import orbits
+    from speasy.core import http
+
+    def _run(payload: Dict[str, Any]) -> Any:
+        km = _kernel_manager()
+        if km is None:
+            return _error_content("embedded IPython kernel is not available")
+        return orbits.fetch_transform(
+            payload.get("from_frame"), payload.get("to_frame"),
+            payload["start"], payload["stop"], payload.get("sampling"),
+            str(payload["name"]), km.shell.user_ns,
+            overwrite=bool(payload.get("overwrite", False)),
+            http_get=http.get,
+        )
+
+    return _text_tool(
+        "sciqlop_transform",
+        (
+            "Fetch 3x3 rotation matrices between two coordinate frames (e.g. "
+            "GSE->HEEQ) into the embedded kernel under `name`, from the CDPP "
+            "3DView service — exact, not an approximation. Does NOT apply the "
+            "rotation itself: interpolate the matrix time axis onto your data's "
+            "time axis, then `np.einsum('nij,nj->ni', R, vectors)` in "
+            "sciqlop_exec_python. `from_frame`/`to_frame` default to J2000/"
+            "ECLIPJ2000; call sciqlop_orbit_bodies_and_frames first if unsure "
+            "of valid names. `sampling` is the step in seconds (default 3600). "
+            "Errors if `name` exists unless `overwrite=true`."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "from_frame": {"type": "string"},
+                "to_frame": {"type": "string"},
+                "start": {"type": ["string", "number"]},
+                "stop": {"type": ["string", "number"]},
+                "sampling": {"type": "integer"},
+                "name": {"type": "string"},
+                "overwrite": {"type": "boolean"},
+            },
+            "required": ["start", "stop", "name"],
+        },
+        _run,
+        gated=True,
+        thread=True,
+    )
+
+
 def _interrupt_kernel_tool() -> Dict[str, Any]:
     def _run(_payload: Dict[str, Any]) -> Any:
         km = _kernel_manager()
@@ -764,7 +875,8 @@ def _write_tools(main_window) -> List[Dict[str, Any]]:
     )
 
     return [set_time_range, _create_panel_tool(main_window), _exec_python_tool(),
-            _fetch_tool(), _submit_job_tool(), _cancel_job_tool(), _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
+            _fetch_tool(), _ephemeris_tool(), _transform_tool(), _submit_job_tool(),
+            _cancel_job_tool(), _install_package_tool()] + _notebook_write_tools() + [_run_notebook_cell_tool(), _interrupt_kernel_tool()]
 
 
 def _create_panel_tool(main_window) -> Dict[str, Any]:
