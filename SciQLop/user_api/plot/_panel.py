@@ -18,7 +18,8 @@ from SciQLop.components.plotting.backend.palette import Palette as _Palette, mak
 from ._plots import to_product_path, plot_product_or_raise, ProjectionPlot, TimeSeriesPlot, XYPlot, to_plottable, is_time_series_plot, \
     is_projection_plot, is_xy_plot, to_plot, AnyProductType, is_product
 from ._graphs import (ensure_arrays_of_double, Histogram2D, _create_histogram2d,
-                      validate_histogram_bins as _validate_histogram_bins)
+                      validate_histogram_bins as _validate_histogram_bins,
+                      _UNSET, _with_explicit)
 from ._thread_safety import on_main_thread
 import numpy as _np
 from speasy.products import SpeasyVariable as _SpeasyVariable
@@ -216,9 +217,62 @@ class PlotPanel:
 
     @on_main_thread
     @_tracing.traced("PlotPanel.plot_function", cat="plot")
-    def plot_function(self, f, plot_index=-1, **kwargs) -> Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]:
+    def plot_function(self, f, plot_index=-1, *, labels=_UNSET, name=_UNSET,
+                      plot_type=_UNSET, graph_type=_UNSET, colors=_UNSET,
+                      y_log_scale=_UNSET, z_log_scale=_UNSET, **kwargs) -> Tuple[
+            ProjectionPlot | TimeSeriesPlot, Plottable]:
+        """Plot a callback ``f(start, stop) -> (x, y[, z])`` that is re-evaluated
+        whenever the panel's time range changes.
+
+        Parameters
+        ----------
+        f : callable
+            ``f(start, stop)`` returning ``(x, y)`` for a line/scatter/curve or
+            ``(x, y, z)`` for a colormap. ``start``/``stop`` are epoch seconds.
+        plot_index : int
+            Existing subplot to draw into. -1 (or out of range) appends a new one.
+        labels : list[str], optional
+            Per-component names shown in the legend. For callbacks the *number*
+            of lines is detected from the data, so labels are cosmetic; if
+            omitted, components are auto-named from the callback's name.
+        name : str, optional
+            Graph name. Defaults to ``f.__name__`` (used as the base for
+            auto-generated component names) unless ``f`` is a lambda.
+        plot_type : PlotType, optional
+            TimeSeries (default), Projection or XY.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        colors : list, optional
+            Per-component colors; defaults to the panel palette.
+        y_log_scale, z_log_scale : bool, optional
+            Use a logarithmic Y / Z (colormap) scale.
+        **kwargs
+            Forwarded to SciQLopPlots (e.g. ``gradient`` for colormaps).
+
+        Returns
+        -------
+        Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]
+        """
+        # `name` is deliberately NOT forwarded through `kwargs` to
+        # `_plot_function`: the SciQLopPlots `line()`/`scatter()`/
+        # `parametric_curve()` bindings reject an upfront `name=` keyword
+        # (only `colormap()` accepts it) — verified directly against
+        # SciQLopPlots 0.29.2. Applying it via `set_name()` on the created
+        # graph works uniformly across every graph type, so that is the only
+        # path used here.
+        resolved_name = name
+        if resolved_name is _UNSET and labels is _UNSET:
+            hint = getattr(f, "__name__", None)
+            if hint and hint != "<lambda>":
+                resolved_name = hint
+        kwargs = _with_explicit(kwargs, labels=labels,
+                                plot_type=plot_type, graph_type=graph_type,
+                                colors=colors, y_log_scale=y_log_scale,
+                                z_log_scale=z_log_scale)
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = _plot_function(self._get_impl_or_raise(), f, index=plot_index, **kwargs)
+        if resolved_name is not _UNSET:
+            _g.set_name(resolved_name)
         wrapped_plot = to_plot(_p)
         return wrapped_plot, to_plottable(_g, plot=wrapped_plot)
 
