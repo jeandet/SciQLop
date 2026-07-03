@@ -4,15 +4,19 @@ from unittest.mock import MagicMock, patch
 
 
 class TestResolveProduct:
+    @patch("SciQLopPlots.ProductsModel")
     @patch("SciQLop.user_api.magics.plot_magic._complete_products")
-    def test_returns_top_match(self, mock_cp):
+    def test_returns_top_match(self, mock_cp, mock_model):
         from SciQLop.user_api.magics.plot_magic import _resolve_product
+        mock_model.node.return_value = None
         mock_cp.return_value = ["speasy/amda/imf_mag"]
         assert _resolve_product("imf") == "speasy/amda/imf_mag"
 
+    @patch("SciQLopPlots.ProductsModel")
     @patch("SciQLop.user_api.magics.plot_magic._complete_products")
-    def test_raises_on_no_match(self, mock_cp):
+    def test_raises_on_no_match(self, mock_cp, mock_model):
         from SciQLop.user_api.magics.plot_magic import _resolve_product
+        mock_model.node.return_value = None
         mock_cp.return_value = []
         with pytest.raises(Exception, match="No product matching"):
             _resolve_product("zzz_nothing")
