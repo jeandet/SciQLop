@@ -147,7 +147,7 @@ def _infer_multicomponent_labels(cached_data: Any) -> List[str]:
 
 def register_virtual_product(name: str, wrapper: MutableCallback, product_type: str,
                               labels: Optional[List[str]], path: Optional[str],
-                              cached_data: Any = None):
+                              cached_data: Any = None, cachable: bool = False):
     """Register a virtual product using the existing create_virtual_product API."""
     from SciQLop.user_api.virtual_products import create_virtual_product, VirtualProductType
 
@@ -165,8 +165,9 @@ def register_virtual_product(name: str, wrapper: MutableCallback, product_type: 
 
     def _do_register():
         if vp_type == VirtualProductType.Spectrogram:
-            create_virtual_product(vp_path, wrapper, vp_type)
+            create_virtual_product(vp_path, wrapper, vp_type, cachable=cachable)
         else:
-            create_virtual_product(vp_path, wrapper, vp_type, labels=effective_labels)
+            create_virtual_product(vp_path, wrapper, vp_type, labels=effective_labels,
+                                   cachable=cachable)
 
     _invoke_on_main_thread(_do_register)

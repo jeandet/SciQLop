@@ -61,6 +61,7 @@ def _parse_args(line: str):
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--start", type=str, default=None)
     parser.add_argument("--stop", type=str, default=None)
+    parser.add_argument("--cachable", action="store_true", default=False)
     return parser.parse_args(shlex.split(line))
 
 
@@ -227,7 +228,8 @@ def vp_magic(line: str, cell: str, local_ns=None):
 
     if is_new or entry.signature_changed:
         _register_virtual_product(func_name, entry.wrapper, type_info.product_type,
-                                  type_info.labels, args.path, cached_data=cached_data)
+                                  type_info.labels, args.path, cached_data=cached_data,
+                                  cachable=args.cachable)
     else:
         from SciQLop.components.plotting.backend.data_provider import providers
         for p in providers.values():
