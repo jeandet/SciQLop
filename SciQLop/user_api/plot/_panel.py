@@ -149,27 +149,31 @@ class PlotPanel:
 
     @on_main_thread
     @_tracing.traced("PlotPanel.plot_product", cat="plot")
-    def plot_product(self, product: AnyProductType, plot_index=-1, **kwargs) -> Tuple[
-        ProjectionPlot | TimeSeriesPlot, Plottable]:
+    def plot_product(self, product: AnyProductType, plot_index=-1, *,
+                     plot_type=_UNSET, graph_type=_UNSET, **kwargs) -> Tuple[
+            ProjectionPlot | TimeSeriesPlot, Plottable]:
         """Plot a product in the panel.
+
         Parameters
         ----------
         product : AnyProductType
-            The product to plot. This can be a string, a VirtualProduct or a list of strings.
+            A product path: ``str``, list of ``str``, or a ``VirtualProduct``.
         plot_index : int
-            Index of an existing subplot to draw into. The default (-1, or any
-            out-of-range index) appends a new subplot to the panel.
-        kwargs : dict
-            extra arguments to pass to the plot function.
-            - plot_type: PlotType
-                The type of plot to create. Can be TimeSeries, Projection or XY. Defaults to TimeSeries.
-            - graph_type: GraphType
-                The type of graph to create. Can be Line, Curve, ColorMap or Scatter. Defaults to Line.
+            Existing subplot to draw into. -1 (or out of range) appends a new one.
+        plot_type : PlotType, optional
+            TimeSeries (default), Projection or XY.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        **kwargs
+            Forwarded to SciQLopPlots. Note: component labels, the graph name
+            and log scales are supplied by the product's provider, so passing
+            them here is unsupported for products.
+
         Returns
         -------
         Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]
-            A tuple containing the plot and the graph object.
         """
+        kwargs = _with_explicit(kwargs, plot_type=plot_type, graph_type=graph_type)
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = plot_product_or_raise(self._get_impl_or_raise(), product, index=plot_index, **kwargs)
         wrapped_plot = to_plot(_p)

@@ -118,3 +118,70 @@ def test_plot_data_name_applied_without_forwarding(plot_panel, monkeypatch):
     _, graph = plot_panel.plot_data(x, y, name="my_line")
     assert "name" not in captured
     assert graph._get_impl_or_raise().name == "my_line"
+
+
+def test_plot_product_keyword_only_and_backward_compatible(plot_panel):
+    # Verified against the pre-promotion signature too: `plot_product(self,
+    # product, plot_index=-1, **kwargs)` only has two positional-or-keyword
+    # parameters, so a 3rd positional argument already raised TypeError
+    # before this change (no *args to absorb it) — this call doesn't
+    # exercise the keyword-only promotion itself. The real contract is
+    # checked below via inspect.signature. This test still guards the
+    # user-facing behavior: passing an extra positional must keep raising,
+    # not silently succeed.
+    from SciQLop.user_api.plot import PlotType
+    with pytest.raises(TypeError):
+        plot_panel.plot_product(["a", "b"], -1, PlotType.XY)
+
+
+def test_plot_product_plot_type_and_graph_type_are_keyword_only():
+    import inspect
+    from SciQLop.user_api.plot._panel import PlotPanel
+
+    sig = inspect.signature(PlotPanel.plot_product)
+    for name in ("plot_type", "graph_type"):
+        assert sig.parameters[name].kind == inspect.Parameter.KEYWORD_ONLY
+
+
+def test_plot_product_forwards_plot_type_and_graph_type(plot_panel, simple_vp_callback, monkeypatch):
+    # Verifies plot_type/graph_type reach the real component-layer
+    # plot_product call cleanly when passed by keyword (the promoted path).
+    #
+    # graph_type=GraphType.Scatter was tried first and found to crash: the
+    # SciQLopPlots 0.29.2 scatter() binding reuses the name `plot_type` for
+    # an unrelated GraphMarkerShape parameter (and calls the actual PlotType
+    # parameter `marker`), so forwarding our PlotType under the `plot_type`
+    # keyword raises a ValueError from the Shiboken overload resolver.
+    # Verified this is pre-existing (reproduces identically against the
+    # unmodified plot_product) and independent of this promotion, so it is
+    # a SciQLopPlots binding concern, not something to fix here. graph_type
+    # =GraphType.Line (the default, going through the line() binding used
+    # by every other test in this file) is used instead to exercise the
+    # forwarding path cleanly.
+    from SciQLop.user_api.plot import PlotType
+    from SciQLop.user_api.plot.enums import GraphType
+    from SciQLopPlots import GraphType as _GraphType
+    from SciQLop.user_api.virtual_products import (
+        create_virtual_product, VirtualProductType,
+    )
+    # plot_product routes through _plots.plot_product_or_raise, which calls
+    # its own module-level `_plot_product` reference (not _panel's) — spy on
+    # that one instead of reusing `_capture_panel_fn` (which patches _panel).
+    import SciQLop.user_api.plot._plots as plots_mod
+    captured = {}
+    original = plots_mod._plot_product
+
+    def spy(impl, *args, **kwargs):
+        captured.clear()
+        captured.update(kwargs)
+        return original(impl, *args, **kwargs)
+
+    monkeypatch.setattr(plots_mod, "_plot_product", spy)
+    vp = create_virtual_product(
+        "test_plot_product_kwargs/vp1", simple_vp_callback,
+        VirtualProductType.Scalar, labels=["y"])
+    plot, graph = plot_panel.plot_product(
+        vp, plot_type=PlotType.TimeSeries, graph_type=GraphType.Line)
+    assert plot is not None
+    assert graph is not None
+    assert captured["graph_type"] == _GraphType.Line
