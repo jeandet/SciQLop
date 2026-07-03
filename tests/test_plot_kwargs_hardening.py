@@ -300,3 +300,46 @@ def test_plot_level_name_not_forwarded_via_kwargs(plot_panel, monkeypatch):
     graph = plot.plot(x, np.cos(x), name="not_forwarded")
     assert "name" not in captured
     assert graph._impl.name == "not_forwarded"
+
+
+def test_scatter_labels_observable(plot_panel):
+    from SciQLop.user_api.plot import PlotType
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y, plot_type=PlotType.XY)
+    g = plot.scatter(x, np.cos(x), labels=["pts"])
+    assert g._impl.labels() == ["pts"]
+
+
+def test_scatter_label_is_keyword_only(plot_panel):
+    from SciQLop.user_api.plot import PlotType
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y, plot_type=PlotType.XY)
+    with pytest.raises(TypeError):
+        plot.scatter(x, np.cos(x), ["pts"])    # labels keyword-only
+
+
+def test_scatter_name_applied_without_forwarding(plot_panel, monkeypatch):
+    # `name` must never reach SciQLopPlots' raw `impl.scatter()` call: the
+    # installed SciQLopPlots 0.29.2 `scatter()` binding rejects an upfront
+    # `name=` keyword the same way `line()`/`parametric_curve()` do (verified
+    # directly, see `_apply_name`'s docstring in `_plots.py`). Spy on the
+    # impl's `scatter` method to confirm it is applied via `set_name()`
+    # afterwards instead.
+    from SciQLop.user_api.plot import PlotType
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y, plot_type=PlotType.XY)
+    impl = plot._get_impl_or_raise()
+    original_scatter = type(impl).scatter
+    captured = {}
+
+    def spy(self, *args, **kwargs):
+        captured.update(kwargs)
+        return original_scatter(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(impl), "scatter", spy)
+    graph = plot.scatter(x, np.cos(x), name="my_scatter")
+    assert "name" not in captured
+    assert graph._impl.name == "my_scatter"

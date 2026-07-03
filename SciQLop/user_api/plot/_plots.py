@@ -186,26 +186,41 @@ class _BasePlot(Plot):
 
     @experimental_api()
     @on_main_thread
-    def scatter(self, x, y, **kwargs) -> Graph:
+    def scatter(self, x, y, *, labels=_UNSET, name=_UNSET, colors=_UNSET,
+                **kwargs) -> Graph:
         """Plot data as a scatter graph (markers only, no lines).
 
         Parameters
         ----------
         x, y : array-like
             Data arrays. Converted to float64 automatically.
+        labels : list[str], optional
+            Per-component legend names.
+        name : str, optional
+            Graph name.
+        colors : list, optional
+            Per-component colors.
         **kwargs
-            Forwarded to the underlying plot implementation (e.g. ``labels``,
-            ``colors``).
+            Forwarded to SciQLopPlots (e.g. ``marker``, ``y_axis``).
 
         Returns
         -------
         Graph
             The created scatter graph.
+
+        Note
+        ----
+        ``name`` is applied via ``set_name()`` on the created graph rather
+        than forwarded — the installed SciQLopPlots 0.29.2 ``scatter()``
+        binding rejects an upfront ``name=`` keyword (verified directly; see
+        ``_apply_name``).
         """
+        kwargs = _with_explicit(kwargs, labels=labels, colors=colors)
         impl = self._get_impl_or_raise()
         kwargs.setdefault('marker', _GraphMarkerShape.FilledCircle)
         y_axis = kwargs.pop("y_axis", "y")
-        graph = impl.scatter(*ensure_arrays_of_double(x, y), **kwargs)
+        graph = _apply_name(
+            impl.scatter(*ensure_arrays_of_double(x, y), **kwargs), name)
         _fix_scatter_marker_pen(graph)
         wrapped = Graph(graph, plot=self)
         if y_axis != "y":
