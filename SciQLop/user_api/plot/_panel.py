@@ -406,7 +406,10 @@ class PlotPanel:
         ``plot_type``, ``graph_type``, ``colors``, ``y_log_scale``,
         ``z_log_scale``) prefer the typed methods — they list these in their
         signatures. Any of them may also be passed here as keyword arguments
-        and are forwarded unchanged.
+        and are forwarded unchanged to ``plot_data``/``plot_function``. For
+        products, only ``plot_type``/``graph_type`` are supported this way:
+        component labels, the graph name and log scales are supplied by the
+        product's provider, so passing them here is unsupported for products.
 
         Returns
         -------
