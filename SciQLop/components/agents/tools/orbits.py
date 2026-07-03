@@ -112,3 +112,39 @@ def fetch_ephemeris(body: str, frame: Optional[str], start, stop, sampling, name
         lines.append(_var_line(short, var))
     lines.append(f"\nbridges: `{name}['position'].to_dataframe()`, `{name}['speed'].values`, `.time`")
     return {"content": [{"type": "text", "text": "\n".join(lines)}]}
+
+
+def parse_transform(payload: Dict[str, Any]) -> SpeasyVariable:
+    samples = payload["values"]
+    times = np.array([_iso_to_ns(s["time"]) for s in samples])
+    matrices = np.array([s["matrix"] for s in samples], dtype=float)
+    meta = {"from_frame": payload.get("fromframe", ""), "to_frame": payload.get("toframe", "")}
+    return SpeasyVariable(
+        axes=[VariableTimeAxis(values=times)],
+        values=DataContainer(matrices, meta=meta, name="matrix"),
+    )
+
+
+def fetch_transform(from_frame: Optional[str], to_frame: Optional[str], start, stop, sampling,
+                    name: str, shell_ns: Dict[str, Any], *, overwrite: bool = False,
+                    http_get: Callable) -> Dict[str, Any]:
+    blocked = _check_overwrite(name, shell_ns, overwrite)
+    if blocked:
+        return blocked
+    params = _time_range_params(start, stop, sampling)
+    if from_frame:
+        params["fromframe"] = from_frame
+    if to_frame:
+        params["toframe"] = to_frame
+    resp = http_get(f"{BASE_URL}/get_transform_matrices", params=params)
+    if not resp.ok:
+        return {"content": [{"type": "text", "text": resp.text}]}
+    var = parse_transform(resp.json())
+    shell_ns[name] = var
+    n = var.shape[0]
+    resolved_from = var.meta.get("from_frame", "") or from_frame or ""
+    resolved_to = var.meta.get("to_frame", "") or to_frame or ""
+    text = (f"fetched transform `{resolved_from}`→`{resolved_to}` into `{name}` "
+           f"— {n} sample(s)\n{_var_line('matrix', var)}"
+           f"\n\nbridges: `{name}.values` (shape (n,3,3)), `{name}.time`")
+    return {"content": [{"type": "text", "text": text}]}

@@ -169,3 +169,59 @@ def test_fetch_ephemeris_respects_overwrite_guard(qtbot):
                           http_get=lambda url, params: _FakeResponse(True, _TRAJECTORY_PAYLOAD))
     assert ns["orbit"] == 123
     assert "already bound" in out["content"][0]["text"]
+
+
+_TRANSFORM_PAYLOAD = {
+    "fromframeId": 1600399, "fromframe": "GSE", "toframeid": 1601010, "toframe": "HEEQ",
+    "start": "2026-01-01T00:00:00.000Z", "stop": "2026-01-01T02:00:00.000Z", "sampling(s)": 3600,
+    "values": [
+        {"time": "2026-01-01T00:00:00.000Z",
+         "matrix": [[-0.998632, 0.006017, 0.051945], [-0.0, -0.993359, 0.115056], [0.052292, 0.114898, 0.992]]},
+        {"time": "2026-01-01T01:00:00.000Z",
+         "matrix": [[-0.998627, 0.006025, 0.052029], [-0.0, -0.993363, 0.115017], [0.052377, 0.11486, 0.992]]},
+    ],
+}
+
+
+def test_parse_transform_builds_matrix_variable(qtbot):
+    from SciQLop.components.agents.tools.orbits import parse_transform
+    var = parse_transform(_TRANSFORM_PAYLOAD)
+    assert var.shape == (2, 3, 3)
+    assert var.meta.get("from_frame") == "GSE" and var.meta.get("to_frame") == "HEEQ"
+    assert var.values[0].tolist() == _TRANSFORM_PAYLOAD["values"][0]["matrix"]
+
+
+def test_fetch_transform_binds_variable_and_summarizes(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_transform
+    ns = {}
+    captured = {}
+
+    def http_get(url, params):
+        captured["url"], captured["params"] = url, params
+        return _FakeResponse(True, _TRANSFORM_PAYLOAD)
+
+    out = fetch_transform("GSE", "HEEQ", 1767225600.0, 1767232800.0, 3600, "R", ns, http_get=http_get)
+    assert ns["R"].shape == (2, 3, 3)
+    text = out["content"][0]["text"]
+    assert "GSE" in text and "HEEQ" in text and "R" in text and "2 sample" in text
+    assert "(n,3,3)" in text
+    assert captured["url"].endswith("/get_transform_matrices")
+    assert captured["params"]["fromframe"] == "GSE" and captured["params"]["toframe"] == "HEEQ"
+
+
+def test_fetch_transform_error_response_returns_text_verbatim(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_transform
+    ns = {}
+    out = fetch_transform("GSE", "NOPE", 0.0, 1.0, None, "R", ns,
+                          http_get=lambda url, params: _FakeResponse(False, text="Frame id not recognized: NOPE"))
+    assert "R" not in ns
+    assert out["content"][0]["text"] == "Frame id not recognized: NOPE"
+
+
+def test_fetch_transform_respects_overwrite_guard(qtbot):
+    from SciQLop.components.agents.tools.orbits import fetch_transform
+    ns = {"R": 123}
+    out = fetch_transform(None, None, 0.0, 1.0, None, "R", ns,
+                          http_get=lambda url, params: _FakeResponse(True, _TRANSFORM_PAYLOAD))
+    assert ns["R"] == 123
+    assert "already bound" in out["content"][0]["text"]
