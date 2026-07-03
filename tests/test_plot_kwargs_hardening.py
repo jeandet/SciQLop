@@ -201,3 +201,102 @@ def test_plot_omnibus_still_dispatches_and_forwards(plot_panel, monkeypatch):
 
 def test_plot_has_docstring():
     assert (PlotPanel.plot.__doc__ or "").strip(), "plot() must document its options"
+
+
+def test_plot_level_methods_are_keyword_only():
+    # The brief's originally proposed regression test tried to prove
+    # keyword-only-ness via `plot.plot(x, y, ["a"])` raising TypeError.
+    # Verified against both TimeSeriesPlot and XYPlot (pre- and
+    # post-promotion): 3 positional args always land in `*args` — that's the
+    # z=colormap path for either plot type — regardless of whether `labels`
+    # is keyword-only, since `*args` absorbs any number of positional
+    # arguments and never binds them to a named parameter. The actual
+    # failure is a ValueError from `ensure_arrays_of_double` trying to
+    # convert `["a"]` to float64, never a TypeError; this call does not
+    # exercise the keyword-only promotion at all. The real, verifiable
+    # contract is checked directly on the signatures instead (same fix
+    # already applied to `test_plot_data_promoted_params_are_keyword_only`).
+    import inspect
+    from SciQLop.user_api.plot._plots import XYPlot, TimeSeriesPlot
+
+    for cls in (XYPlot, TimeSeriesPlot):
+        sig = inspect.signature(cls.plot)
+        for name in ("labels", "name", "colors", "graph_type",
+                    "y_log_scale", "z_log_scale", "y_axis"):
+            assert sig.parameters[name].kind == inspect.Parameter.KEYWORD_ONLY, \
+                f"{cls.__name__}.plot's {name!r} must be keyword-only"
+
+
+def test_plot_level_name_is_observable(plot_panel):
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y)      # a TimeSeriesPlot
+    graph = plot.plot(x, np.cos(x), name="second")
+    assert graph._impl.name == "second"
+
+
+def test_plot_level_name_is_observable_on_xy_plot(plot_panel):
+    # XYPlot.plot's default graph_type is ParametricCurve; the installed
+    # SciQLopPlots 0.29.2 `parametric_curve()` binding rejects an upfront
+    # `name=` keyword the same way `line()`/`scatter()` do (verified
+    # directly) — so this exercises the same `_apply_name`-after-creation
+    # fix as the TimeSeriesPlot/line case above, on a different graph
+    # creation path.
+    from SciQLop.user_api.plot import PlotType
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y, plot_type=PlotType.XY)
+    graph = plot.plot(x, np.cos(x), name="xy_second")
+    assert graph._impl.name == "xy_second"
+
+
+def test_plot_level_name_is_observable_on_colormap(plot_panel):
+    # The 3-arg (x, y, z) path routes through SciQLopPlots' `colormap()`
+    # binding, which — unlike line/curve/scatter — accepts an upfront
+    # `name=` keyword directly (verified directly against SciQLopPlots
+    # 0.29.2). `_apply_name` still applies it after creation uniformly, so
+    # this guards that the colormap path keeps working under that scheme.
+    from SciQLop.user_api.plot import PlotType
+    x = np.linspace(0, 1, 5)
+    y = np.linspace(0, 1, 6)
+    z = np.random.rand(5, 6)
+    # Create a bare XY plot first (2-arg curve, not a colormap) so the
+    # 3-arg colormap call below is the plot's first and only colormap —
+    # a plot can host only one (see _reject_if_colormap_already_present).
+    plot, _g = plot_panel.plot_data(x, x, plot_type=PlotType.XY)
+    colormap = plot.plot(x, y, z, name="my_colormap")
+    assert colormap._impl.name == "my_colormap"
+
+
+def test_plot_level_colors_and_labels_still_forward(plot_panel):
+    # Regression guard: colors/labels forward cleanly on the line path (no
+    # provider to conflict with, unlike the product path) — promoting them
+    # to explicit keyword-only params must not break this.
+    x = np.linspace(0, 1, 20)
+    y = np.column_stack([np.sin(x), np.cos(x)])
+    plot, _g = plot_panel.plot_data(x, y)
+    graph = plot.plot(x, y, colors=["#ff0000", "#00ff00"], labels=["a", "b"])
+    assert graph is not None
+
+
+def test_plot_level_name_not_forwarded_via_kwargs(plot_panel, monkeypatch):
+    # `name` must never reach SciQLopPlots' raw `impl.plot()` call: forwarding
+    # it crashes for line/curve/scatter graph types (verified directly
+    # against SciQLopPlots 0.29.2 — only colormap() accepts an upfront
+    # `name=`). Spy on the impl's `plot` method to confirm it is applied via
+    # `set_name()` afterwards instead.
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y)
+    impl = plot._get_impl_or_raise()
+    original_plot = type(impl).plot
+    captured = {}
+
+    def spy(self, *args, **kwargs):
+        captured.update(kwargs)
+        return original_plot(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(impl), "plot", spy)
+    graph = plot.plot(x, np.cos(x), name="not_forwarded")
+    assert "name" not in captured
+    assert graph._impl.name == "not_forwarded"

@@ -2,7 +2,7 @@ from .enums import PlotType, ScaleType
 from .protocol import Plot
 from ._graphs import (Graph, ColorMap, Histogram2D, to_plottable,
                       ensure_arrays_of_double, _create_histogram2d,
-                      _reject_if_colormap_already_present)
+                      _reject_if_colormap_already_present, _UNSET, _with_explicit)
 from ._graphic_primitives import HorizontalLine
 from typing import Optional, Union, List, Any
 from ..virtual_products import VirtualProduct
@@ -91,6 +91,24 @@ def _bind_y_axis(plottable, y_axis: str):
     if isinstance(plottable, Graph):
         plottable.y_axis = y_axis
     return plottable
+
+
+def _apply_name(raw_plottable, name):
+    """Set the name on a freshly created plottable, unless *name* was left
+    unset.
+
+    Applied *after* creation rather than forwarded through ``**kwargs``: the
+    installed SciQLopPlots 0.29.2 ``line()``/``scatter()``/
+    ``parametric_curve()`` bindings reject an upfront ``name=`` keyword (only
+    ``colormap()`` accepts it — verified directly), and the product path's
+    ``plot_product()`` sometimes sets its own ``name=`` internally (e.g. for
+    spectrograms), which would collide with a forwarded one. ``set_name()``
+    on the returned object works uniformly across every graph type and
+    every path (line, curve, colormap, scatter, product), matching the
+    pattern already used for ``PlotPanel.plot_data``/``plot_function``."""
+    if name is not _UNSET:
+        raw_plottable.set_name(name)
+    return raw_plottable
 
 
 def _reject_zero_width_range(axis_name: str, lo: float, hi: float) -> None:
@@ -392,29 +410,51 @@ class XYPlot(_BasePlot):
         return PlotType.XY
 
     @on_main_thread
-    def plot(self, *args, **kwargs):
-        """Plot data on the plot: two vectors (x, y), three (x, y, z → colormap),
-        or a callback ``f(start, stop) -> (x, y)``. Product paths are not
-        accepted here — use ``PlotPanel.plot_product`` or ``TimeSeriesPlot.plot``.
+    def plot(self, *args, labels=_UNSET, name=_UNSET, colors=_UNSET,
+             graph_type=_UNSET, y_log_scale=_UNSET, z_log_scale=_UNSET,
+             y_axis="y", **kwargs):
+        """Plot on this XY plot: two vectors ``(x, y)``, three ``(x, y, z)`` →
+        colormap, or a callback ``f(start, stop) -> (x, y)``. Product paths are
+        not accepted here — use ``PlotPanel.plot_product`` or
+        ``TimeSeriesPlot.plot``.
 
-        Pass ``y_axis="y2"`` to bind the resulting graph to the secondary
-        y-axis (line / curve / scatter only — not colormaps).
+        Parameters
+        ----------
+        labels : list[str], optional
+            Per-component legend names.
+        name : str, optional
+            Graph name.
+        colors : list, optional
+            Per-component colors.
+        graph_type : GraphType, optional
+            Defaults to ``ParametricCurve`` for XY plots.
+        y_log_scale, z_log_scale : bool, optional
+            Logarithmic Y / Z scale.
+        y_axis : {"y", "y2"}
+            Bind the graph to the primary or secondary y-axis (line / curve /
+            scatter only — not colormaps).
+        **kwargs
+            Forwarded to SciQLopPlots.
         """
+        kwargs = _with_explicit(kwargs, labels=labels, colors=colors,
+                                graph_type=graph_type, y_log_scale=y_log_scale,
+                                z_log_scale=z_log_scale)
         kwargs["graph_type"] = kwargs.get("graph_type", _GraphType.ParametricCurve)
-        y_axis = kwargs.pop("y_axis", "y")
         if len(args) == 1:
             if callable(args[0]):
-                return _bind_y_axis(Graph(self._get_impl_or_raise().plot(*args, **kwargs), plot=self), y_axis)
+                raw = _apply_name(self._get_impl_or_raise().plot(*args, **kwargs), name)
+                return _bind_y_axis(Graph(raw, plot=self), y_axis)
             else:
                 raise ValueError("Invalid arguments")
         elif len(args) == 2:
-            return _bind_y_axis(
-                Graph(self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs), plot=self),
-                y_axis,
-            )
+            raw = _apply_name(
+                self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs), name)
+            return _bind_y_axis(Graph(raw, plot=self), y_axis)
         elif len(args) == 3:
             _reject_if_colormap_already_present(self._get_impl_or_raise())
-            return ColorMap(self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs))
+            raw = _apply_name(
+                self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs), name)
+            return ColorMap(raw)
         return None
 
     @experimental_api()
@@ -531,47 +571,58 @@ class TimeSeriesPlot(_BasePlot):
         return PlotType.TimeSeries
 
     @on_main_thread
-    def plot(self, *args, **kwargs):
-        """Plot data on the plot, either two vectors or a product path or a function.
-        If only one argument is passed, it is assumed to be a function that behaves like a callback and returns two vectors (x, y) or a product path from the product tree.
-        If two or three arguments are passed, they are assumed to be the x and y vectors (and optionally z for a color map). They can be of any collection of numbers (list, tuple, numpy array, etc.) and will be converted to numpy arrays of double.
-
+    def plot(self, *args, labels=_UNSET, name=_UNSET, colors=_UNSET,
+             graph_type=_UNSET, y_log_scale=_UNSET, z_log_scale=_UNSET,
+             y_axis="y", **kwargs):
+        """Plot on this time-series plot: two/three vectors ``(x, y[, z])``, a
+        product path, or a callback ``f(start, stop) -> (x, y[, z])``.
 
         Parameters
         ----------
-        args : Any
-            The arguments to pass to the plot method. Can be a function or two vectors.
-        kwargs : Any
-            Additional arguments forwarded to the underlying plot
-            implementation (e.g. ``labels``, ``colors``, ``y_axis``).
+        labels : list[str], optional
+            Per-component legend names.
+        name : str, optional
+            Graph name.
+        colors : list, optional
+            Per-component colors.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        y_log_scale, z_log_scale : bool, optional
+            Logarithmic Y / Z scale.
+        y_axis : {"y", "y2"}
+            Bind the graph to the primary or secondary y-axis.
+        **kwargs
+            Forwarded to SciQLopPlots.
+
         Returns
         -------
         Optional[Graph]
-            The graph object representing the plot.
-        Raises
-        ------
-        ValueError
-            If the arguments are not valid.
 
+        Note
+        ----
+        For the product path (``plot(product)``), ``labels`` is supplied by
+        the product's provider — passing it here conflicts with the
+        provider's own value and raises ``TypeError`` (verified against
+        SciQLopPlots 0.29.2). ``name`` is safe on every path: it is applied
+        via ``set_name()`` on the created graph rather than forwarded.
         """
-        y_axis = kwargs.pop("y_axis", "y")
+        kwargs = _with_explicit(kwargs, labels=labels, colors=colors,
+                                graph_type=graph_type, y_log_scale=y_log_scale,
+                                z_log_scale=z_log_scale)
         if len(args) == 1:
             if callable(args[0]):
-                return _bind_y_axis(to_plottable(self._get_impl_or_raise().plot(*args, **kwargs), plot=self), y_axis)
+                raw = _apply_name(self._get_impl_or_raise().plot(*args, **kwargs), name)
+                return _bind_y_axis(to_plottable(raw, plot=self), y_axis)
             else:
-                return _bind_y_axis(
-                    to_plottable(plot_product_or_raise(self._get_impl_or_raise(), args[0], **kwargs),
-                                 plot=self),
-                    y_axis,
-                )
+                raw = _apply_name(
+                    plot_product_or_raise(self._get_impl_or_raise(), args[0], **kwargs), name)
+                return _bind_y_axis(to_plottable(raw, plot=self), y_axis)
         elif 3 >= len(args) >= 2:
             if len(args) == 3:
                 _reject_if_colormap_already_present(self._get_impl_or_raise())
-            return _bind_y_axis(
-                to_plottable(self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs),
-                             plot=self),
-                y_axis,
-            )
+            raw = _apply_name(
+                self._get_impl_or_raise().plot(*ensure_arrays_of_double(*args), **kwargs), name)
+            return _bind_y_axis(to_plottable(raw, plot=self), y_axis)
         raise ValueError("Invalid arguments")
 
     @experimental_api()
