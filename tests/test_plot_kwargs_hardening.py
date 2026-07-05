@@ -302,6 +302,28 @@ def test_plot_level_name_not_forwarded_via_kwargs(plot_panel, monkeypatch):
     assert graph._impl.name == "not_forwarded"
 
 
+def test_plot_level_name_is_observable_on_product(plot_panel, simple_vp_callback):
+    # TimeSeriesPlot.plot's product branch (a single non-callable arg) also
+    # routes through _apply_name after creation. Unlike labels (which
+    # collides with the provider's own labels= and raises TypeError, see
+    # PlotPanel.plot_product's docstring), name has no provider-side
+    # equivalent to collide with, so it applies cleanly here too. Pins the
+    # non-obvious fact this relies on: plot_product returns a single
+    # set_name-able graph (not a (plot, graph) tuple) when the target is a
+    # plot rather than a panel.
+    from SciQLop.user_api.virtual_products import (
+        create_virtual_product, VirtualProductType,
+    )
+    x = np.linspace(0, 1, 20)
+    y = np.sin(x)
+    plot, _g = plot_panel.plot_data(x, y)          # a TimeSeriesPlot
+    vp = create_virtual_product(
+        "test_plot_level_name_kwargs/vp1", simple_vp_callback,
+        VirtualProductType.Scalar, labels=["y"])
+    graph = plot.plot(vp, name="product_name")
+    assert graph._impl.name == "product_name"
+
+
 def test_scatter_labels_observable(plot_panel):
     from SciQLop.user_api.plot import PlotType
     x = np.linspace(0, 1, 20)
