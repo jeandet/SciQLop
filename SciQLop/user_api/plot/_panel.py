@@ -18,7 +18,8 @@ from SciQLop.components.plotting.backend.palette import Palette as _Palette, mak
 from ._plots import to_product_path, plot_product_or_raise, ProjectionPlot, TimeSeriesPlot, XYPlot, to_plottable, is_time_series_plot, \
     is_projection_plot, is_xy_plot, to_plot, AnyProductType, is_product
 from ._graphs import (ensure_arrays_of_double, Histogram2D, _create_histogram2d,
-                      validate_histogram_bins as _validate_histogram_bins)
+                      validate_histogram_bins as _validate_histogram_bins,
+                      _UNSET, _with_explicit)
 from ._thread_safety import on_main_thread
 import numpy as _np
 from speasy.products import SpeasyVariable as _SpeasyVariable
@@ -148,27 +149,31 @@ class PlotPanel:
 
     @on_main_thread
     @_tracing.traced("PlotPanel.plot_product", cat="plot")
-    def plot_product(self, product: AnyProductType, plot_index=-1, **kwargs) -> Tuple[
-        ProjectionPlot | TimeSeriesPlot, Plottable]:
+    def plot_product(self, product: AnyProductType, plot_index=-1, *,
+                     plot_type=_UNSET, graph_type=_UNSET, **kwargs) -> Tuple[
+            ProjectionPlot | TimeSeriesPlot, Plottable]:
         """Plot a product in the panel.
+
         Parameters
         ----------
         product : AnyProductType
-            The product to plot. This can be a string, a VirtualProduct or a list of strings.
+            A product path: ``str``, list of ``str``, or a ``VirtualProduct``.
         plot_index : int
-            Index of an existing subplot to draw into. The default (-1, or any
-            out-of-range index) appends a new subplot to the panel.
-        kwargs : dict
-            extra arguments to pass to the plot function.
-            - plot_type: PlotType
-                The type of plot to create. Can be TimeSeries, Projection or XY. Defaults to TimeSeries.
-            - graph_type: GraphType
-                The type of graph to create. Can be Line, Curve, ColorMap or Scatter. Defaults to Line.
+            Existing subplot to draw into. -1 (or out of range) appends a new one.
+        plot_type : PlotType, optional
+            TimeSeries (default), Projection or XY.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        **kwargs
+            Forwarded to SciQLopPlots. Note: component labels, the graph name
+            and log scales are supplied by the product's provider, so passing
+            them here is unsupported for products.
+
         Returns
         -------
         Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]
-            A tuple containing the plot and the graph object.
         """
+        kwargs = _with_explicit(kwargs, plot_type=plot_type, graph_type=graph_type)
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = plot_product_or_raise(self._get_impl_or_raise(), product, index=plot_index, **kwargs)
         wrapped_plot = to_plot(_p)
@@ -176,30 +181,54 @@ class PlotPanel:
 
     @on_main_thread
     @_tracing.traced("PlotPanel.plot_data", cat="plot")
-    def plot_data(self, x, y=None, z=None, plot_index=-1, **kwargs) -> Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]:
+    def plot_data(self, x, y=None, z=None, plot_index=-1, *, labels=_UNSET,
+                  name=_UNSET, plot_type=_UNSET, graph_type=_UNSET, colors=_UNSET,
+                  y_log_scale=_UNSET, z_log_scale=_UNSET, **kwargs) -> Tuple[
+            ProjectionPlot | TimeSeriesPlot, Plottable]:
         """Plot static data or a SpeasyVariable in the panel.
+
         Parameters
         ----------
         x : array-like or SpeasyVariable
-            The X data to plot, or a SpeasyVariable (time and values extracted automatically).
+            X data, or a SpeasyVariable (time + values extracted automatically).
         y : array-like, optional
-            The Y data to plot. Not needed if x is a SpeasyVariable.
+            Y data. Not needed if ``x`` is a SpeasyVariable. A 2-D ``y`` draws
+            one line per column.
         z : array-like, optional
-            The Z data to plot. If not provided, a 2D plot will be created.
+            2-D Z data ``[len(x), len(y)]`` → builds a colormap.
         plot_index : int
-            Index of an existing subplot to draw into. The default (-1, or any
-            out-of-range index) appends a new subplot to the panel.
-        kwargs : dict
-            extra arguments to pass to the plot function.
-            - plot_type: PlotType
-                The type of plot to create. Can be TimeSeries, Projection or XY. Defaults to TimeSeries.
-            - graph_type: GraphType
-                The type of graph to create. Can be Line, Curve, ColorMap or Scatter. Defaults to Line.
+            Existing subplot to draw into. -1 (or out of range) appends a new one.
+        labels : list[str], optional
+            Per-component legend names.
+        name : str, optional
+            Graph name.
+        plot_type : PlotType, optional
+            TimeSeries (default), Projection or XY.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        colors : list, optional
+            Per-component colors; defaults to the panel palette.
+        y_log_scale, z_log_scale : bool, optional
+            Use a logarithmic Y / Z scale.
+        **kwargs
+            Forwarded to SciQLopPlots.
+
         Returns
         -------
         Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]
-            A tuple containing the plot and the graph object.
         """
+        # `name` is deliberately NOT forwarded through `kwargs` to
+        # `_plot_static_data`: the SciQLopPlots `line()`/`scatter()`/
+        # `parametric_curve()` bindings reject an upfront `name=` keyword
+        # (only `colormap()` accepts it) — verified directly against
+        # SciQLopPlots 0.29.2 — and `plot_data`'s 1-D/2-D `y` path always
+        # goes through `line()`. Applying it via `set_name()` on the created
+        # graph works uniformly across every graph type (same pattern as
+        # `plot_function`), so that is the only path used here.
+        kwargs = _with_explicit(kwargs, labels=labels,
+                                plot_type=plot_type, graph_type=graph_type,
+                                colors=colors, y_log_scale=y_log_scale,
+                                z_log_scale=z_log_scale)
         if isinstance(x, _SpeasyVariable):
             arrays = _speasy_variable_to_arrays(x)
             x, y = arrays[0], arrays[1]
@@ -211,14 +240,69 @@ class PlotPanel:
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = _plot_static_data(self._get_impl_or_raise(), *ensure_arrays_of_double(x, y, z), index=plot_index,
                                    **kwargs)
+        if name is not _UNSET:
+            _g.set_name(name)
         wrapped_plot = to_plot(_p)
         return wrapped_plot, to_plottable(_g, plot=wrapped_plot)
 
     @on_main_thread
     @_tracing.traced("PlotPanel.plot_function", cat="plot")
-    def plot_function(self, f, plot_index=-1, **kwargs) -> Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]:
+    def plot_function(self, f, plot_index=-1, *, labels=_UNSET, name=_UNSET,
+                      plot_type=_UNSET, graph_type=_UNSET, colors=_UNSET,
+                      y_log_scale=_UNSET, z_log_scale=_UNSET, **kwargs) -> Tuple[
+            ProjectionPlot | TimeSeriesPlot, Plottable]:
+        """Plot a callback ``f(start, stop) -> (x, y[, z])`` that is re-evaluated
+        whenever the panel's time range changes.
+
+        Parameters
+        ----------
+        f : callable
+            ``f(start, stop)`` returning ``(x, y)`` for a line/scatter/curve or
+            ``(x, y, z)`` for a colormap. ``start``/``stop`` are epoch seconds.
+        plot_index : int
+            Existing subplot to draw into. -1 (or out of range) appends a new one.
+        labels : list[str], optional
+            Per-component names shown in the legend. For callbacks the *number*
+            of lines is detected from the data, so labels are cosmetic; if
+            omitted, components are auto-named from the callback's name.
+        name : str, optional
+            Graph name. Defaults to ``f.__name__`` (used as the base for
+            auto-generated component names) unless ``f`` is a lambda.
+        plot_type : PlotType, optional
+            TimeSeries (default), Projection or XY.
+        graph_type : GraphType, optional
+            Line (default), Curve, ColorMap or Scatter.
+        colors : list, optional
+            Per-component colors; defaults to the panel palette.
+        y_log_scale, z_log_scale : bool, optional
+            Use a logarithmic Y / Z (colormap) scale.
+        **kwargs
+            Forwarded to SciQLopPlots (e.g. ``gradient`` for colormaps).
+
+        Returns
+        -------
+        Tuple[ProjectionPlot | TimeSeriesPlot, Plottable]
+        """
+        # `name` is deliberately NOT forwarded through `kwargs` to
+        # `_plot_function`: the SciQLopPlots `line()`/`scatter()`/
+        # `parametric_curve()` bindings reject an upfront `name=` keyword
+        # (only `colormap()` accepts it) — verified directly against
+        # SciQLopPlots 0.29.2. Applying it via `set_name()` on the created
+        # graph works uniformly across every graph type, so that is the only
+        # path used here.
+        resolved_name = name
+        if resolved_name is _UNSET and labels is _UNSET:
+            hint = getattr(f, "__name__", None)
+            if hint and hint != "<lambda>":
+                resolved_name = hint
+        kwargs = _with_explicit(kwargs, labels=labels,
+                                plot_type=plot_type, graph_type=graph_type,
+                                colors=colors, y_log_scale=y_log_scale,
+                                z_log_scale=z_log_scale)
         kwargs = _normalize_plot_kwargs(kwargs)
         _p, _g = _plot_function(self._get_impl_or_raise(), f, index=plot_index, **kwargs)
+        if resolved_name is not _UNSET:
+            _g.set_name(resolved_name)
         wrapped_plot = to_plot(_p)
         return wrapped_plot, to_plottable(_g, plot=wrapped_plot)
 
@@ -308,6 +392,29 @@ class PlotPanel:
 
     @on_main_thread
     def plot(self, *args, plot_index=-1, **kwargs) -> Tuple[ProjectionPlot | TimeSeriesPlot, Plottable] | None:
+        """Omnibus plotting entry point — dispatches on argument type.
+
+        Accepts, and forwards ``**kwargs`` to the matching typed method:
+
+        - ``plot(speasy_variable, ...)``         → :meth:`plot_data`
+        - ``plot(product, ...)``                 → :meth:`plot_product`
+          (``str`` / list of ``str`` / ``VirtualProduct``)
+        - ``plot(callable, ...)``                → :meth:`plot_function`
+        - ``plot(x, y[, z], ...)``               → :meth:`plot_data`
+
+        For documented, discoverable options (``labels``, ``name``,
+        ``plot_type``, ``graph_type``, ``colors``, ``y_log_scale``,
+        ``z_log_scale``) prefer the typed methods — they list these in their
+        signatures. Any of them may also be passed here as keyword arguments
+        and are forwarded unchanged to ``plot_data``/``plot_function``. For
+        products, only ``plot_type``/``graph_type`` are supported this way:
+        component labels, the graph name and log scales are supplied by the
+        product's provider, so passing them here is unsupported for products.
+
+        Returns
+        -------
+        Tuple[Plot, Plottable] or None
+        """
         if len(args) == 1 and isinstance(args[0], _SpeasyVariable):
             return self.plot_data(args[0], plot_index=plot_index, **kwargs)
         if len(args) <= 1:  # product or callable

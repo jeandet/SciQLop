@@ -74,6 +74,18 @@ def pytest_configure(config):
     from tscat.base import backend as _tscat_backend
     _tscat_backend()
 
+    # Create the QApplication here (as SciQLopApp, not a plain QApplication)
+    # so module-level imports of SciQLop user_api (which transitively import
+    # core.models.ProductsModel) work during test collection. This ensures
+    # ProductsModel.instance() doesn't fail with "application static was used
+    # without a QCoreApplication instance". Using SciQLopApp specifically
+    # matters: Qt only allows one QApplication per process, so if a plain
+    # QApplication were created here, the qapp fixture (qapp_cls=SciQLopApp)
+    # could never construct the real SciQLopApp later, and any fixture
+    # calling sciqlop_app()/sciqlop_event_loop() would raise TypeError.
+    from SciQLop.core.sciqlop_application import SciQLopApp
+    SciQLopApp.instance() or SciQLopApp([])
+
 
 @pytest.fixture(scope="session")
 def qapp_cls():

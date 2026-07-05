@@ -42,6 +42,23 @@ def ensure_arrays_of_double(*args):
     return tuple(_to_float64(a) for a in args)
 
 
+_UNSET = object()
+
+
+def _with_explicit(kwargs: dict, **named) -> dict:
+    """Fold caller-set keyword params into the forwarded ``kwargs`` dict.
+
+    Values left as the ``_UNSET`` sentinel are not inserted, preserving the
+    exact present/absent semantics the ``**kwargs`` passthrough had before
+    these options were promoted to explicit keyword parameters. Falsy real
+    values (``False``, ``[]``, ``0``) are forwarded; only ``_UNSET`` is skipped.
+    """
+    for key, value in named.items():
+        if value is not _UNSET:
+            kwargs[key] = value
+    return kwargs
+
+
 def _len_safe(a):
     try:
         return int(len(a))
