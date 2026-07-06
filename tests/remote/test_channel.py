@@ -16,8 +16,8 @@ class FakeTransport:
     def __init__(self):
         self.requests = []
         self.frees = []
-    def send_request(self, channel_id, req_id, start, stop):
-        self.requests.append((channel_id, req_id, start, stop))
+    def send_request(self, channel_id, req_id, start, stop, knobs):
+        self.requests.append((channel_id, req_id, start, stop, knobs))
     def send_free(self, channel_id, name):
         self.frees.append((channel_id, name))
     def release(self, channel_id):
@@ -77,3 +77,18 @@ def test_stale_result_is_dropped_and_immediately_freed():
     assert pipe.calls == []                 # never set_data
     assert (5, n1) in t.frees               # freed immediately
     s1.unlink()
+
+
+def test_set_knobs_is_included_in_next_request():
+    t = FakeTransport()
+    ch = RemoteChannel(pipeline=FakePipeline(), channel_id=5, transport=t)
+    ch.set_knobs({"gain": 2.0})
+    ch.on_data_requested_values(0.0, 1.0)
+    assert t.requests[-1] == (5, 1, 0.0, 1.0, {"gain": 2.0})
+
+
+def test_default_knobs_is_empty_dict():
+    t = FakeTransport()
+    ch = RemoteChannel(pipeline=FakePipeline(), channel_id=5, transport=t)
+    ch.on_data_requested_values(0.0, 1.0)
+    assert t.requests[-1] == (5, 1, 0.0, 1.0, {})

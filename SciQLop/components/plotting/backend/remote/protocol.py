@@ -11,7 +11,7 @@ import numpy as np
 
 # main -> worker
 INSTALL = "INSTALL"      # (INSTALL, channel_id, cloudpickle_blob, arity)
-REQUEST = "REQUEST"      # (REQUEST, channel_id, req_id, start, stop)
+REQUEST = "REQUEST"      # (REQUEST, channel_id, req_id, start, stop, knobs)
 FREE = "FREE"            # (FREE, channel_id, shm_name)
 RELEASE = "RELEASE"      # (RELEASE, channel_id)
 SHUTDOWN = "SHUTDOWN"    # (SHUTDOWN,)

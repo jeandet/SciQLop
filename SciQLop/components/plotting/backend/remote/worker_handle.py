@@ -97,8 +97,8 @@ class RemoteWorker(QObject):
         self._conn.send((P.INSTALL, channel_id, blob, arity))
 
     # --- transport interface (called by RemoteChannel) ----------------------
-    def send_request(self, channel_id: int, req_id: int, start: float, stop: float) -> None:
-        self._send((P.REQUEST, channel_id, req_id, start, stop))
+    def send_request(self, channel_id: int, req_id: int, start: float, stop: float, knobs: dict) -> None:
+        self._send((P.REQUEST, channel_id, req_id, start, stop, knobs))
 
     def send_free(self, channel_id: int, name: str) -> None:
         self._send((P.FREE, channel_id, name))

@@ -69,7 +69,7 @@ def _drain(conn, first):
 
 def _coalesce(msgs, state, conn) -> Dict[int, tuple]:
     """Apply INSTALL/FREE/RELEASE immediately; keep only the latest REQUEST
-    per channel. Returns {channel_id: (req_id, start, stop)}."""
+    per channel. Returns {channel_id: (req_id, start, stop, knobs)}."""
     latest: Dict[int, tuple] = {}
     for m in msgs:
         tag = m[0]
@@ -82,8 +82,8 @@ def _coalesce(msgs, state, conn) -> Dict[int, tuple]:
             if ch in state.pools:
                 state.pools[ch].mark_reusable(name)
         elif tag == P.REQUEST:
-            _, ch, req, start, stop = m
-            latest[ch] = (req, start, stop)
+            _, ch, req, start, stop, knobs = m
+            latest[ch] = (req, start, stop, knobs)
         elif tag == P.RELEASE:
             _, ch = m
             state.release(ch)
@@ -91,12 +91,12 @@ def _coalesce(msgs, state, conn) -> Dict[int, tuple]:
     return latest
 
 
-def _serve_request(conn, state, channel_id, req_id, start, stop) -> None:
+def _serve_request(conn, state, channel_id, req_id, start, stop, knobs) -> None:
     cb = state.callables.get(channel_id)
     if cb is None:
         return
     try:
-        result = cb(start, stop)
+        result = cb(start, stop, **knobs)
     except Exception:
         conn.send((P.ERROR, channel_id, req_id, traceback.format_exc()))
         return
@@ -119,8 +119,8 @@ def serve(conn) -> None:
         if first[0] == P.SHUTDOWN:
             break
         latest = _coalesce(_drain(conn, first), state, conn)
-        for channel_id, (req_id, start, stop) in latest.items():
-            _serve_request(conn, state, channel_id, req_id, start, stop)
+        for channel_id, (req_id, start, stop, knobs) in latest.items():
+            _serve_request(conn, state, channel_id, req_id, start, stop, knobs)
     for ch in list(state.pools):
         state.release(ch)
 

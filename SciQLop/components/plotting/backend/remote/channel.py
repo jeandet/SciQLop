@@ -22,11 +22,15 @@ class RemoteChannel:
         self._latest_req_id = 0
         self._held: Optional[shared_memory.SharedMemory] = None
         self._held_name: Optional[str] = None
+        self._knobs: dict = {}
 
     # --- outgoing -----------------------------------------------------------
+    def set_knobs(self, knobs: dict) -> None:
+        self._knobs = dict(knobs)
+
     def on_data_requested_values(self, start: float, stop: float) -> None:
         self._latest_req_id += 1
-        self._transport.send_request(self.channel_id, self._latest_req_id, start, stop)
+        self._transport.send_request(self.channel_id, self._latest_req_id, start, stop, self._knobs)
 
     def on_data_requested(self, rng) -> None:
         self.on_data_requested_values(rng.start(), rng.stop())
