@@ -1,3 +1,4 @@
+import functools
 import inspect
 import warnings
 
@@ -98,6 +99,29 @@ def _to_datetime64(start: float, stop: float) -> Tuple[np.datetime64, np.datetim
     return np.datetime64(int(start * 1e9), "ns"), np.datetime64(int(stop * 1e9), "ns")
 
 
+def _build_remote_callback(callback: VirtualProductCallback, range_stack: list,
+                            knobs_model: Optional[type], knobs_kwarg_name: str) -> Callable:
+    """Wrap *callback* for out-of-process execution: apply the same range-type
+    conversion and knobs_model shaping that EasyProvider._invoke_callback does
+    in-process, so the worker only ever needs to call cb(start, stop, **knobs).
+
+    functools.wraps preserves __module__/__qualname__ so RemoteRegistry's
+    plugin_key_for() still groups this product's worker with the rest of its
+    plugin instead of with easy_provider itself.
+    """
+    @functools.wraps(callback)
+    def _remote_call(start: float, stop: float, **knobs):
+        rng = (start, stop)
+        for fn in range_stack:
+            rng = fn(rng)
+        if knobs_model is not None:
+            kwargs = {knobs_kwarg_name: knobs_model(**knobs)}
+        else:
+            kwargs = dict(knobs)
+        return callback(*rng, **kwargs)
+    return _remote_call
+
+
 class EasyProvider(DataProvider):
     def __init__(self, path, callback: VirtualProductCallback, parameter_type: ParameterType, metadata: dict,
                  data_order=DataOrder.Y_FIRST,
@@ -121,10 +145,6 @@ class EasyProvider(DataProvider):
             ProductsModelNode(product_name, self.name, metadata, ProductsModelNodeType.PARAMETER, parameter_type, "",
                               None)
         )
-        if out_of_process:
-            from SciQLop.components.plotting.backend.remote.registry import remote_registry
-            arity = 3 if parameter_type == ParameterType.Spectrogram else 2
-            remote_registry().register(path, callback, arity)
         self._callback = callback
         self._parameter_type = parameter_type
         self._debug = debug
@@ -149,6 +169,23 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
     ...
             """)
         self._range_stack = stack
+
+        if out_of_process:
+            if debug:
+                raise ValueError(
+                    f"virtual product '{path}': out_of_process=True is incompatible with "
+                    f"debug=True (debug diagnostics require the callback to run in-process)")
+            if self._dependency_specs:
+                dep_names = [s.name for s in self._dependency_specs]
+                raise ValueError(
+                    f"virtual product '{path}': out_of_process=True does not support "
+                    f"Depends() dependencies (found on parameter(s) {dep_names}); "
+                    f"resolve dependencies in-process or drop out_of_process")
+            from SciQLop.components.plotting.backend.remote.registry import remote_registry
+            remote_callback = _build_remote_callback(
+                callback, self._range_stack, knobs_model, knobs_kwarg_name)
+            arity = 3 if parameter_type == ParameterType.Spectrogram else 2
+            remote_registry().register(path, remote_callback, arity)
 
     @staticmethod
     def _compute_knob_specs(callback, knobs_model):
