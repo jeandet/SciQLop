@@ -80,3 +80,54 @@ def test_attach_knob_state_knobs_changed_signal_fires(qapp, qtbot):
     assert fired == [{"fft": 512}]
 
 
+class _FakeRemoteChannel:
+    def __init__(self):
+        self.knobs_calls = []
+
+    def set_knobs(self, knobs):
+        self.knobs_calls.append(dict(knobs))
+
+    def on_data_requested_values(self, start, stop):
+        pass
+
+
+def test_attach_remote_knob_state_binds_channel(qapp):
+    from SciQLop.components.plotting.backend.easy_provider import EasyScalar
+    from SciQLop.components.plotting.ui.time_sync_panel import _attach_remote_knob_state
+    from PySide6.QtCore import QObject
+
+    def f(start: float, stop: float,
+          gain: Annotated[float, Knob(min=0.0, max=10.0)] = 1.0):
+        return np.linspace(start, stop, 4), np.zeros(4)
+
+    provider = EasyScalar(path="vp/remoteknobtest", get_data_callback=f, component_name="x", metadata={})
+    graph = QObject()
+    channel = _FakeRemoteChannel()
+
+    _attach_remote_knob_state(provider, "vp/remoteknobtest", channel, graph)
+
+    state = graph._knob_state
+    assert state.values == {"gain": 1.0}
+    assert channel.knobs_calls == [{"gain": 1.0}]   # initial bind
+
+    state.set_value("gain", 5.0)
+    assert channel.knobs_calls[-1] == {"gain": 5.0}
+
+
+def test_attach_remote_knob_state_no_op_for_no_knobs(qapp):
+    from SciQLop.components.plotting.backend.easy_provider import EasyScalar
+    from SciQLop.components.plotting.ui.time_sync_panel import _attach_remote_knob_state
+    from PySide6.QtCore import QObject
+
+    def f(start: float, stop: float):
+        return np.linspace(start, stop, 4), np.zeros(4)
+
+    provider = EasyScalar(path="vp/remotenoknobs", get_data_callback=f, component_name="x", metadata={})
+    graph = QObject()
+    channel = _FakeRemoteChannel()
+
+    _attach_remote_knob_state(provider, "vp/remotenoknobs", channel, graph)
+
+    assert not hasattr(graph, "_knob_state")
+    assert channel.knobs_calls == []
+

@@ -36,6 +36,7 @@ def plot_remote(target, node, provider, product: list):
     worker = reg.worker_for(product)
     channel = RemoteChannel(pipeline=pipeline, channel_id=next(_channel_ids),
                             transport=worker)
+    graph._remote_channel = channel
     worker.register_channel(channel)
     blob, arity = reg.spec_for(product)
     worker.install(channel.channel_id, blob, arity)

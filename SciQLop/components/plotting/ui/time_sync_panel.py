@@ -368,6 +368,23 @@ def _trigger_refetch(graph):
     on_main_thread(_trigger_refetch_impl)(graph)
 
 
+def _trigger_remote_refetch_impl(graph):
+    channel = getattr(graph, "_remote_channel", None)
+    if channel is None:
+        log.debug("graph has no remote channel — cannot refetch on knob change")
+        return
+    try:
+        current_range = graph.x_axis().range()
+        channel.on_data_requested_values(current_range.start(), current_range.stop())
+    except Exception:
+        log.debug("could not trigger remote refetch for knob change", exc_info=True)
+
+
+def _trigger_remote_refetch(graph):
+    from SciQLop.user_api.threading import on_main_thread
+    on_main_thread(_trigger_remote_refetch_impl)(graph)
+
+
 def _attach_knob_state(provider, node, callback, r, target=None):
     specs = []
     try:
@@ -385,6 +402,50 @@ def _attach_knob_state(provider, node, callback, r, target=None):
     graph._knob_state = state
     callback.knob_state = state
     refetch_slot = lambda *_: _trigger_refetch(graph)
+    graph._knobs_slot = refetch_slot
+    state.knobs_changed.connect(refetch_slot)
+    state.knobs_changed.connect(
+        lambda values, g=graph: update_knobs(g, dict(values))
+    )
+    graph._visual_knob_dispose = None
+    if plot is not None:
+        graph._visual_knob_dispose = create_plot_items(plot, state)
+    if hasattr(graph, "add_inspector_extension"):
+        ext = KnobInspectorExtension(state, parent=graph)
+        graph._knob_inspector_ext = ext
+        graph.add_inspector_extension(ext)
+        ext.destroyed.connect(lambda *_: _dispose_graph_knobs(graph))
+
+
+def _attach_remote_knob_state(provider, node, channel, r, target=None):
+    """Twin of _attach_knob_state for remote (out_of_process) graphs.
+
+    Duplicated rather than parameterizing _attach_knob_state: the two differ
+    in how a value change reaches the data source (callback.knob_state
+    assignment vs. channel.set_knobs push) and how refetch is triggered
+    (graph.call vs. channel.on_data_requested_values) enough that threading
+    both shapes through one function reads worse than two small twins, and
+    _attach_knob_state already has direct test coverage on its exact
+    (provider, node, callback, r, target) signature that would otherwise need
+    updating for no behavioral reason.
+    """
+    specs = []
+    try:
+        specs = provider.get_knobs(node)
+    except Exception:
+        log.error("get_knobs failed for %s", node, exc_info=True)
+    if not specs:
+        return
+    from SciQLop.components.plotting.backend.graph_knobs import GraphKnobState
+    from SciQLop.components.plotting.ui.knob_inspector import KnobInspectorExtension
+    from SciQLop.components.plotting.ui.knob_inspector.plot_items import create_plot_items
+    graph = _graph_from_result(r)
+    plot = _plot_from_result(r, target)
+    state = GraphKnobState(specs, parent=graph)
+    graph._knob_state = state
+    channel.set_knobs(state.values)
+    state.knobs_changed.connect(lambda values: channel.set_knobs(values))
+    refetch_slot = lambda *_: _trigger_remote_refetch(graph)
     graph._knobs_slot = refetch_slot
     state.knobs_changed.connect(refetch_slot)
     state.knobs_changed.connect(
@@ -597,7 +658,12 @@ def plot_product(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjectio
     if remote_registry().is_remote(product):
         from SciQLop.components.plotting.backend.remote.plot_remote import plot_remote
         target, _ = _resolve_plot_target(p, kwargs)
-        return plot_remote(target, node, provider, product)
+        r = plot_remote(target, node, provider, product)
+        graph = _graph_from_result(r)
+        channel = getattr(graph, "_remote_channel", None) if graph is not None else None
+        if channel is not None:
+            _attach_remote_knob_state(provider, node, channel, r, target)
+        return r
     product_path_str = "//".join(product)
     target, existing_plot = _resolve_plot_target(p, kwargs)
     log.debug(f"Parameter type: {node.parameter_type()}")
