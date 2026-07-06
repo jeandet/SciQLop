@@ -131,20 +131,26 @@ identical between local and remote: look up `provider.get_knobs(node)`,
 build a `GraphKnobState`, create the on-plot draggable knob handles
 (`create_plot_items`), wire the `KnobInspectorExtension` and its disposal.
 The only two things that differ are (a) how a knob-value change reaches the
-data-fetch path, and (b) how an immediate refetch is triggered. Both become
-small parameters supplied by the caller instead of being hardcoded to the
-local shape, so the ~30 lines of shared setup are not duplicated:
+data-fetch path, and (b) how an immediate refetch is triggered:
 
 | | Local (existing) | Remote (new) |
 |---|---|---|
 | Value sink | `callback.knob_state = state` | `channel.set_knobs(values)` |
 | Refetch trigger | `graph.call(current_range)` | `channel.on_data_requested_values(rng.start(), rng.stop())` |
 
-`plot_product()` calls this generalized attachment after `plot_remote()`
-returns, same as it does today for the local path. To get from
-`plot_remote()`'s return value to the `channel` object at that call site,
-`plot_remote()` stashes it as `graph._remote_channel = channel` — matching
-the existing idiom already used for knob state (`graph._knob_state`,
+**Shipped as a twin function, not a parameterized shared one:** during
+plan-writing this was reconsidered — parameterizing `_attach_knob_state()`
+itself would mean changing its signature (dropping the positional
+`callback` param) and touching its 3 already-passing tests for marginal
+benefit. Instead, `_attach_remote_knob_state()` duplicates the ~25 lines of
+shared setup as a deliberate twin, differing only in the two rows above.
+`_attach_knob_state()` and its tests are untouched by this feature.
+
+`plot_product()` calls `_attach_remote_knob_state()` after `plot_remote()`
+returns, mirroring how it calls `_attach_knob_state()` for the local path.
+To get from `plot_remote()`'s return value to the `channel` object at that
+call site, `plot_remote()` stashes it as `graph._remote_channel = channel` —
+matching the existing idiom already used for knob state (`graph._knob_state`,
 `graph._knobs_slot`) rather than changing `plot_remote`'s return signature.
 
 ## 6. Error handling
