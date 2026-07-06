@@ -134,6 +134,23 @@ class EasyProvider(DataProvider):
         self._path = path.split('/')
         product_name = self._path[-1]
         product_path = self._path[:-1]
+
+        # Extract and validate dependencies early, before any side effects
+        dependency_specs = extract_dependencies_from_callback(callback)
+
+        # Guard: out_of_process incompatibilities must be checked before products.add_node()
+        if out_of_process:
+            if debug:
+                raise ValueError(
+                    f"virtual product '{path}': out_of_process=True is incompatible with "
+                    f"debug=True (debug diagnostics require the callback to run in-process)")
+            if dependency_specs:
+                dep_names = [s.name for s in dependency_specs]
+                raise ValueError(
+                    f"virtual product '{path}': out_of_process=True does not support "
+                    f"Depends() dependencies (found on parameter(s) {dep_names}); "
+                    f"resolve dependencies in-process or drop out_of_process")
+
         metadata = {
             **metadata,
             "description": f"Virtual {parameter_type.name} product built from Python function: {self.name}",
@@ -151,7 +168,7 @@ class EasyProvider(DataProvider):
         self._knobs_model = knobs_model
         self._knobs_kwarg_name = knobs_kwarg_name
         self._knob_specs = self._compute_knob_specs(callback, knobs_model)
-        self._dependency_specs = extract_dependencies_from_callback(callback)
+        self._dependency_specs = dependency_specs
 
         stack = []
         arguments_type = _arguments_type(callback)
@@ -171,16 +188,7 @@ def {self.name}(start: float, stop: float) -> Optional[SpeasyVariable]:
         self._range_stack = stack
 
         if out_of_process:
-            if debug:
-                raise ValueError(
-                    f"virtual product '{path}': out_of_process=True is incompatible with "
-                    f"debug=True (debug diagnostics require the callback to run in-process)")
-            if self._dependency_specs:
-                dep_names = [s.name for s in self._dependency_specs]
-                raise ValueError(
-                    f"virtual product '{path}': out_of_process=True does not support "
-                    f"Depends() dependencies (found on parameter(s) {dep_names}); "
-                    f"resolve dependencies in-process or drop out_of_process")
+            # Guards already checked earlier in __init__, so just register
             from SciQLop.components.plotting.backend.remote.registry import remote_registry
             remote_callback = _build_remote_callback(
                 callback, self._range_stack, knobs_model, knobs_kwarg_name)
