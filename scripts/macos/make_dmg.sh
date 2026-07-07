@@ -109,7 +109,12 @@ UV_BIN=$DIST/SciQLop.app/Contents/Resources/opt/uv/uv
 PY_STAGING=$DIST/python-staging
 rm -rf $PY_STAGING
 $UV_BIN python install $PYTHON_VERSION --install-dir $PY_STAGING
-PBS_DIR=$(ls -d $PY_STAGING/cpython-* | head -1)
+# uv also drops an unversioned alias symlink (cpython-3.14-...) next to the
+# real patch-versioned directory (cpython-3.14.6-...); `-type d` excludes it
+# since find doesn't follow symlinks for -type, so this always resolves to
+# the real install even if the alias is absent or dangling (seen on GH
+# Actions macOS runners).
+PBS_DIR=$(find $PY_STAGING -mindepth 1 -maxdepth 1 -type d -name 'cpython-*' | head -1)
 rsync -aq $PBS_DIR/ $PREFIX_ABS/
 
 PYTHON_BIN=$PREFIX_ABS/bin/python3
