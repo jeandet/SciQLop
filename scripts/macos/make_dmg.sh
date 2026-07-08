@@ -36,18 +36,23 @@ python3 $HERE/make_info_dot_plist.py > $DIST/SciQLop.app/Contents/Info.plist
 
 cat <<'EOT' > $DIST/SciQLop.app/Contents/MacOS/SciQLop
 #! /usr/bin/env bash
-export HERE=$(dirname $BASH_SOURCE)
-export RESOURCES=$HERE/../Resources
-export PATH=$RESOURCES/opt/uv:$RESOURCES/usr/local/bin/:/usr/bin:/bin:/usr/sbin:/sbin
-export QT_PATH=$($RESOURCES/usr/local/bin/python3 -c "import PySide6,os;print(os.path.dirname(PySide6.__file__));")/Qt
-export LD_LIBRARY_PATH=$RESOURCES/usr/local/lib
-export DYLD_LIBRARY_PATH=$RESOURCES/usr/local/lib:$RESOURCES/usr/local/bin/:$QT_PATH/lib
-export QT_PLUGIN_PATH=$QT_PATH/plugins
+# Quote every expansion below: Finder renames a second copy of the app to
+# something like "SciQLop 2.app", and an unquoted $BASH_SOURCE/$HERE/
+# $RESOURCES word-splits on that space, sending `dirname` two arguments and
+# turning the final python3 invocation into "/path/to/SciQLop" "2.app/..." —
+# bash then tries to execute the directory, failing with "is a directory".
+export HERE=$(dirname "$BASH_SOURCE")
+export RESOURCES="$HERE/../Resources"
+export PATH="$RESOURCES/opt/uv:$RESOURCES/usr/local/bin/:/usr/bin:/bin:/usr/sbin:/sbin"
+export QT_PATH="$("$RESOURCES/usr/local/bin/python3" -c "import PySide6,os;print(os.path.dirname(PySide6.__file__));")/Qt"
+export LD_LIBRARY_PATH="$RESOURCES/usr/local/lib"
+export DYLD_LIBRARY_PATH="$RESOURCES/usr/local/lib:$RESOURCES/usr/local/bin/:$QT_PATH/lib"
+export QT_PLUGIN_PATH="$QT_PATH/plugins"
 export QTWEBENGINE_CHROMIUM_FLAGS="--single-process"
-export SSL_CERT_FILE=$($RESOURCES/usr/local/bin/python3 -m certifi)
-export REQUESTS_CA_BUNDLE=${SSL_CERT_FILE}
+export SSL_CERT_FILE=$("$RESOURCES/usr/local/bin/python3" -m certifi)
+export REQUESTS_CA_BUNDLE="${SSL_CERT_FILE}"
 export SCIQLOP_BUNDLED="1"
-$RESOURCES/usr/local/bin/python3 -m SciQLop.app
+exec "$RESOURCES/usr/local/bin/python3" -m SciQLop.app
 EOT
 
 chmod +x $DIST/SciQLop.app/Contents/MacOS/SciQLop
