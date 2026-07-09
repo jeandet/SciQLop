@@ -284,8 +284,17 @@ class _specgram_callback(_ProductCallbackBase):
         return self._y_is_descending_
 
     def __call__(self, start, stop):
+        empty = np.empty(0, dtype=np.float64)
         try:
-            x, y, z = self._fetch(start, stop)
+            result = self._fetch(start, stop)
+        except Exception as e:
+            log.error(f"Error getting data for {self.node}: {e}")
+            return empty, empty, empty
+        if not result:
+            # No data in the requested range — a routine outcome, not an error.
+            return empty, empty, empty
+        try:
+            x, y, z = result
             if self._y_is_descending(y):
                 if len(y.shape) == 1:
                     y = y[::-1].copy()
@@ -295,7 +304,6 @@ class _specgram_callback(_ProductCallbackBase):
             return x, y, z
         except Exception as e:
             log.error(f"Error getting data for {self.node}: {e}")
-            empty = np.empty(0, dtype=np.float64)
             return empty, empty, empty
 
 
