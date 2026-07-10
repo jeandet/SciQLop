@@ -48,7 +48,7 @@ class _WorkerState:
 
     def pool(self, channel_id: int) -> ShmPool:
         if channel_id not in self.pools:
-            self.pools[channel_id] = ShmPool()
+            self.pools[channel_id] = ShmPool(name_prefix=f"sciqlop_{channel_id}")
         return self.pools[channel_id]
 
     def release(self, channel_id: int) -> None:

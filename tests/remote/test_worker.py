@@ -62,6 +62,28 @@ def test_coalesce_keeps_latest_knobs_with_latest_request():
     assert latest == {1: (2, 0.0, 2.0, {"gain": 2.0})}
 
 
+def test_two_channels_get_non_colliding_shm_segment_names():
+    """Two channels on the same worker each get their own ShmPool
+    (_WorkerState.pool(channel_id)); each pool's internal counter starts at
+    0, so their first-ever segment must not collide on name within the
+    shared worker process (same pid). Reproduces a real crash: two synced
+    remote graphs on one worker both requesting data concurrently hit
+    FileExistsError on shared_memory.SharedMemory(create=True) for the same
+    name, which is unhandled in _serve_request and kills the whole worker."""
+    state = _WorkerState()
+    seg1 = state.pool(1).acquire(64)
+    try:
+        seg2 = state.pool(2).acquire(64)
+        try:
+            assert seg1.name != seg2.name
+        finally:
+            seg2.shm.close()
+            seg2.shm.unlink()
+    finally:
+        seg1.shm.close()
+        seg1.shm.unlink()
+
+
 def test_worker_applies_knobs_to_callback():
     main, worker = Pipe()
     _run_worker(worker)
