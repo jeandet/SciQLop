@@ -42,9 +42,12 @@ class SciQLopApp(QApplication):
         self.setOrganizationDomain("lpp.fr")
         self.setApplicationName("SciQLop")
         sciqlop_logging.setup(capture_stdout=False)
-        from SciQLop.components.profiling import hang_dump, sampler
+        from SciQLop.components.profiling import hang_dump, sampler, watchdog
         hang_dump.install_signal_dump()
         sampler.maybe_start_from_settings()
+        self._watchdog = watchdog.Watchdog()
+        self._watchdog.start()
+        self._watchdog_timer = watchdog.start_qt_heartbeat(self._watchdog)
         # self.setAttribute(QtCore.Qt.AA_UseStyleSheetPropagationInWidgetStyles, True)
         self._current_palette_name = SciQLopStyle().color_palette
         self._current_palette = setup_palette(palette_name=self._current_palette_name)
