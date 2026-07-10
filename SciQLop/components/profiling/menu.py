@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QDialog, QFileDialog, QMenu, QMessageBox, QPlainTextEdit, QVBoxLayout, QWidget,
 )
 
+from SciQLop.components import sciqlop_logging
 from SciQLop.core import tracing
 from SciQLop.core.ui.tooltips import rich_tooltip
 from .perfetto import open_trace_in_perfetto
@@ -22,6 +23,8 @@ from .speasy_tracing import install as install_speasy_tracing
 from . import hang_dump
 from . import sampler as sampler_module
 from .thread_cpu_top import hot_threads
+
+log = sciqlop_logging.getLogger(__name__)
 
 
 class _HotThreadsDispatcher(QObject):
@@ -126,7 +129,14 @@ class ProfilingMenu(QObject):
         self._refresh()
 
     def _on_stop(self) -> None:
+        path = self._current_path
         tracing.disable()
+        if path:
+            worker_paths = sorted(str(p) for p in Path(path).parent.glob(
+                f"{Path(path).stem}.worker-*{Path(path).suffix}"))
+            merged = tracing.merge_worker_traces(path, worker_paths)
+            if merged:
+                log.info("Merged %d remote-worker trace(s) into %s", merged, path)
         self._current_path = None
         self._refresh()
 

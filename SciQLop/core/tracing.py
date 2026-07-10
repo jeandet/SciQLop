@@ -22,6 +22,7 @@ from __future__ import annotations
 import functools
 import inspect
 import threading
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
@@ -148,12 +149,27 @@ def _ensure_thread_named(hint: str = "") -> None:
             pass
 
 
+_current_path: Optional[str] = None
+
+
 def enable(path: str) -> None:
+    global _current_path
+    _current_path = path
     _enable(path)
 
 
 def disable() -> None:
+    global _current_path
+    _current_path = None
     _disable()
+
+
+def current_path() -> Optional[str]:
+    """The path passed to the most recent `enable()`, or None if not
+    currently recording. Tracked here (not by the underlying SciQLopPlots
+    tracer) so a remote worker subprocess can be told where to write its
+    own sibling trace -- see `merge_worker_traces`."""
+    return _current_path
 
 
 def flush() -> None:
@@ -264,8 +280,49 @@ def traced(name: Optional[str] = None, cat: str = "",
     return decorator
 
 
+def merge_worker_traces(main_path: str, worker_paths: Iterable[str]) -> int:
+    """Merge sibling worker-process trace files into `main_path`.
+
+    Every event already carries a `pid` field (see Tracing.hpp), so merging
+    is just concatenating `traceEvents` arrays -- Perfetto renders distinct
+    pids as separate process tracks in one loaded file, no per-event
+    rewriting needed. Missing/unreadable worker files are skipped, not
+    fatal. Returns how many worker files were actually merged.
+    """
+    import json
+
+    main_file = Path(main_path)
+    if not main_file.is_file():
+        return 0
+    try:
+        with open(main_file) as f:
+            main_data = json.load(f)
+    except (OSError, ValueError):
+        return 0
+    if not isinstance(main_data, dict) or "traceEvents" not in main_data:
+        return 0
+
+    merged = 0
+    for worker_path in worker_paths:
+        wpath = Path(worker_path)
+        if not wpath.is_file():
+            continue
+        try:
+            with open(wpath) as f:
+                worker_data = json.load(f)
+            main_data["traceEvents"].extend(worker_data.get("traceEvents", []))
+        except (OSError, ValueError):
+            continue
+        merged += 1
+
+    if merged:
+        with open(main_file, "w") as f:
+            json.dump(main_data, f)
+    return merged
+
+
 __all__ = [
-    "enable", "disable", "flush", "is_enabled", "set_thread_name",
+    "enable", "disable", "flush", "is_enabled", "current_path", "set_thread_name",
     "counter", "async_begin", "async_end",
-    "zone", "session", "traced",
+    "zone", "session", "traced", "merge_worker_traces",
 ]

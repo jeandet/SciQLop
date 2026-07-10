@@ -5,7 +5,10 @@ from multiprocessing import Pipe
 from multiprocessing import shared_memory
 from SciQLop.components.plotting.backend.remote import protocol as P
 from SciQLop.components.plotting.backend.remote.protocol import unpack_arrays
-from SciQLop.components.plotting.backend.remote.worker import serve, _coalesce, _WorkerState
+import SciQLop.components.plotting.backend.remote.worker as worker_module
+from SciQLop.components.plotting.backend.remote.worker import (
+    serve, _coalesce, _WorkerState, _parse_startup_payload,
+)
 
 
 def _run_worker(conn):
@@ -82,6 +85,42 @@ def test_two_channels_get_non_colliding_shm_segment_names():
     finally:
         seg1.shm.close()
         seg1.shm.unlink()
+
+
+def test_parse_startup_payload_splits_fixed_size_authkey_and_trace_path():
+    authkey = bytes(range(32))  # os.urandom(32) is always exactly 32 bytes
+    raw = authkey + "/tmp/worker-trace.json".encode("utf-8")
+    parsed_key, trace_path = _parse_startup_payload(raw)
+    assert parsed_key == authkey
+    assert trace_path == "/tmp/worker-trace.json"
+
+
+def test_parse_startup_payload_empty_trace_path_when_absent():
+    authkey = bytes(range(32))
+    parsed_key, trace_path = _parse_startup_payload(authkey)
+    assert parsed_key == authkey
+    assert trace_path == ""
+
+
+def test_serve_request_emits_tracing_zones(monkeypatch):
+    zone_calls = []
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_zone(name, cat="", **kwargs):
+        zone_calls.append(name)
+        yield
+
+    monkeypatch.setattr(worker_module.tracing, "zone", fake_zone)
+    main, worker = Pipe()
+    _run_worker(worker)
+    cb = lambda start, stop: (np.array([start, stop]), np.array([1.0, 2.0]))
+    main.send((P.INSTALL, 1, cloudpickle.dumps(cb), 2))
+    main.send((P.REQUEST, 1, 1, 0.0, 10.0, {}))
+    main.recv()
+    main.send((P.SHUTDOWN,))
+    assert "worker._serve_request" in zone_calls
+    assert "worker.callback" in zone_calls
 
 
 def test_worker_applies_knobs_to_callback():

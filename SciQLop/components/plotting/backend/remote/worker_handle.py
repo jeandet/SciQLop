@@ -13,7 +13,8 @@ import tempfile
 import threading
 import time
 from multiprocessing.connection import Listener
-from typing import Dict, Tuple
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 from PySide6.QtCore import QObject, QSocketNotifier
 
@@ -49,12 +50,29 @@ class RemoteWorker(QObject):
              "SciQLop.components.plotting.backend.remote.worker", address],
             stdin=subprocess.PIPE,
         )
-        self._proc.stdin.write(authkey)
+        trace_path = self._derive_worker_trace_path()
+        self._proc.stdin.write(authkey + trace_path.encode("utf-8"))
         self._proc.stdin.close()
         self._conn = self._accept_or_timeout(listener)
         self._notifier = QSocketNotifier(self._conn.fileno(), QSocketNotifier.Type.Read)
         self._notifier.activated.connect(self._on_readable)
         tracing.counter("remote.worker_alive", 1, cat="remote")
+
+    def _derive_worker_trace_path(self) -> str:
+        """When a trace session is active, tell the worker (via stdin,
+        alongside the authkey -- see worker._parse_startup_payload) to
+        record its own sibling trace, merged back in on Stop via
+        tracing.merge_worker_traces(). Known v1 limitation: only workers
+        SPAWNED while a session is active get one -- an already-running
+        worker (registry.py caches across Start/Stop cycles) won't
+        retroactively start tracing."""
+        main_path = tracing.current_path()
+        if not main_path or self._proc is None:
+            return ""
+        p = Path(main_path)
+        suffix = p.suffix or ".json"
+        stem = p.name[: -len(suffix)] if suffix and p.name.endswith(suffix) else p.stem
+        return str(p.with_name(f"{stem}.worker-{self.plugin_key}-{self._proc.pid}{suffix}"))
 
     def _accept_or_timeout(self, listener):
         """Accept the worker's connection without blocking the UI forever: if
