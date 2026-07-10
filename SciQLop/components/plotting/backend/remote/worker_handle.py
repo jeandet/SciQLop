@@ -103,13 +103,16 @@ class RemoteWorker(QObject):
         self._channels[channel.channel_id] = channel
 
     def install(self, channel_id: int, blob: bytes, arity: int) -> None:
-        self._conn.send((P.INSTALL, channel_id, blob, arity))
+        with tracing.zone("RemoteWorker.install", cat="remote", channel=channel_id):
+            self._conn.send((P.INSTALL, channel_id, blob, arity))
 
     # --- transport interface (called by RemoteChannel) ----------------------
     def send_request(self, channel_id: int, req_id: int, start: float, stop: float, knobs: dict) -> None:
-        self._pending[channel_id] = (req_id, time.monotonic())
-        tracing.counter("remote.pending_requests", len(self._pending), cat="remote")
-        self._send((P.REQUEST, channel_id, req_id, start, stop, knobs))
+        with tracing.zone("RemoteWorker.send_request", cat="remote",
+                          channel=channel_id, req=req_id):
+            self._pending[channel_id] = (req_id, time.monotonic())
+            tracing.counter("remote.pending_requests", len(self._pending), cat="remote")
+            self._send((P.REQUEST, channel_id, req_id, start, stop, knobs))
 
     def send_free(self, channel_id: int, name: str) -> None:
         self._send((P.FREE, channel_id, name))
@@ -131,32 +134,34 @@ class RemoteWorker(QObject):
 
     # --- reply pump ---------------------------------------------------------
     def _on_readable(self) -> None:
-        try:
-            while self._conn is not None and self._conn.poll(0):
-                self._dispatch(self._conn.recv())
-        except (EOFError, OSError):
-            self._on_worker_died()
+        with tracing.zone("RemoteWorker._on_readable", cat="remote"):
+            try:
+                while self._conn is not None and self._conn.poll(0):
+                    self._dispatch(self._conn.recv())
+            except (EOFError, OSError):
+                self._on_worker_died()
 
     def _dispatch(self, msg) -> None:
         tag = msg[0]
-        if tag == P.RESULT:
-            _, ch, req, name, layout, arity = msg
-            self._settle(ch, req)
-            c = self._channels.get(ch)
-            if c is not None:
-                c.on_result(req, name, layout, arity)
-        elif tag == P.EMPTY:
-            _, ch, req = msg
-            self._settle(ch, req)
-            c = self._channels.get(ch)
-            if c is not None:
-                c.on_empty(req)
-        elif tag == P.ERROR:
-            _, ch, req, tb = msg
-            self._settle(ch, req)
-            c = self._channels.get(ch)
-            if c is not None:
-                c.on_error(req, tb)
+        with tracing.zone("RemoteWorker._dispatch", cat="remote", tag=tag):
+            if tag == P.RESULT:
+                _, ch, req, name, layout, arity = msg
+                self._settle(ch, req)
+                c = self._channels.get(ch)
+                if c is not None:
+                    c.on_result(req, name, layout, arity)
+            elif tag == P.EMPTY:
+                _, ch, req = msg
+                self._settle(ch, req)
+                c = self._channels.get(ch)
+                if c is not None:
+                    c.on_empty(req)
+            elif tag == P.ERROR:
+                _, ch, req, tb = msg
+                self._settle(ch, req)
+                c = self._channels.get(ch)
+                if c is not None:
+                    c.on_error(req, tb)
 
     def _settle(self, channel_id: int, req_id: int) -> None:
         """Pop the matching pending entry (a stale req_id -- already

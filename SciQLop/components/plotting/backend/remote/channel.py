@@ -9,6 +9,7 @@ import logging
 from multiprocessing import shared_memory
 from typing import Optional
 
+from SciQLop.core import tracing
 from .protocol import unpack_arrays
 
 log = logging.getLogger(__name__)
@@ -23,13 +24,21 @@ class RemoteChannel:
         self._held: Optional[shared_memory.SharedMemory] = None
         self._held_name: Optional[str] = None
         self._knobs: dict = {}
+        self._async_handle: Optional[int] = None  # spans request -> reply
 
     # --- outgoing -----------------------------------------------------------
     def set_knobs(self, knobs: dict) -> None:
         self._knobs = dict(knobs)
 
     def on_data_requested_values(self, start: float, stop: float) -> None:
+        if self._async_handle is not None:
+            # Superseded before it ever got a reply -- close its span so it
+            # doesn't stay open forever (worker.py only ever replies to the
+            # latest request per channel; this one never will get one).
+            tracing.async_end(self._async_handle)
         self._latest_req_id += 1
+        self._async_handle = tracing.async_begin(
+            f"remote.request[channel={self.channel_id}]", cat="remote")
         self._transport.send_request(self.channel_id, self._latest_req_id, start, stop, self._knobs)
 
     def on_data_requested(self, rng) -> None:
@@ -40,16 +49,23 @@ class RemoteChannel:
         if req_id < self._latest_req_id:
             self._transport.send_free(self.channel_id, shm_name)   # stale: drop + free
             return
+        self._close_async_span(req_id)
         shm = shared_memory.SharedMemory(name=shm_name, create=False, track=False)
         views = unpack_arrays(shm.buf, layout)
         self._pipeline.set_data(*views)
         self._supersede(shm, shm_name)
 
     def on_empty(self, req_id: int) -> None:
-        pass
+        self._close_async_span(req_id)
 
     def on_error(self, req_id: int, tb: str) -> None:
+        self._close_async_span(req_id)
         log.error("remote data source error (channel %s):\n%s", self.channel_id, tb)
+
+    def _close_async_span(self, req_id: int) -> None:
+        if req_id == self._latest_req_id and self._async_handle is not None:
+            tracing.async_end(self._async_handle)
+            self._async_handle = None
 
     # --- lifetime -----------------------------------------------------------
     def _supersede(self, shm, name) -> None:

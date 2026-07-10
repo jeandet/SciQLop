@@ -20,6 +20,7 @@ from SciQLop.core.ui.tooltips import rich_tooltip
 from .perfetto import open_trace_in_perfetto
 from .speasy_tracing import install as install_speasy_tracing
 from . import hang_dump
+from . import sampler as sampler_module
 from .thread_cpu_top import hot_threads
 
 
@@ -62,6 +63,15 @@ class ProfilingMenu(QObject):
             " directory -- useful when SciQLop feels slow right now."
             " The same dump can be triggered from outside the app with"
             " kill -USR1 <pid>, no elevated privilege needed."))
+        self._flush_samples = self.menu.addAction(
+            "Flush sampling history", self._on_flush_samples)
+        self._flush_samples.setToolTip(rich_tooltip(
+            "Flush sampling history",
+            "Writes the last minute or so of periodic all-threads stack"
+            " samples to the diagnostics directory -- shows what was"
+            " running even in code nobody hand-instrumented with a trace"
+            " zone. The sampler itself is off by default; enable it in"
+            " Settings > Profiling."))
         self.menu.addSeparator()
         self._open_last = self.menu.addAction(
             "Open last trace in Perfetto", self._on_open_last)
@@ -152,6 +162,18 @@ class ProfilingMenu(QObject):
         path = hang_dump.dump_now("manual")
         QMessageBox.information(self._host, "Profiling",
                                 f"Thread stacks dumped to:\n{path}")
+
+    def _on_flush_samples(self) -> None:
+        sampler = sampler_module.get_sampler()
+        if not sampler.snapshot():
+            QMessageBox.information(
+                self._host, "Profiling",
+                "No samples collected yet -- the sampler is off by default"
+                " (Settings > Profiling > sampler_enabled) or just started.")
+            return
+        path = sampler_module.flush_to_file(sampler, None, "manual")
+        QMessageBox.information(self._host, "Profiling",
+                                f"Sampling history dumped to:\n{path}")
 
     def _on_open_last(self) -> None:
         if not self._last_path:
