@@ -4,16 +4,29 @@ The status entry mirrors `SciQLop.core.tracing.is_enabled()`, so a trace
 started via the SCIQLOP_TRACE env var (handled by SciQLopPlots' static init)
 is reflected correctly even though we never called enable() ourselves.
 """
+import os
+import threading
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox, QWidget
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QFontDatabase
+from PySide6.QtWidgets import (
+    QDialog, QFileDialog, QMenu, QMessageBox, QPlainTextEdit, QVBoxLayout, QWidget,
+)
 
 from SciQLop.core import tracing
 from SciQLop.core.ui.tooltips import rich_tooltip
 from .perfetto import open_trace_in_perfetto
 from .speasy_tracing import install as install_speasy_tracing
+from . import hang_dump
+from .thread_cpu_top import hot_threads
+
+
+class _HotThreadsDispatcher(QObject):
+    """Runs hot_threads() off the GUI thread -- it sleeps for `window_s`,
+    which would otherwise freeze the UI for the sampling duration."""
+    ready = Signal(str)
 
 
 class ProfilingMenu(QObject):
@@ -31,6 +44,24 @@ class ProfilingMenu(QObject):
         self._stop.setToolTip(rich_tooltip(
             "Stop trace",
             "Stop recording and save the current trace."))
+        self.menu.addSeparator()
+        self._hot_threads = self.menu.addAction(
+            "Show hot OS threads…", self._on_show_hot_threads)
+        self._hot_threads.setToolTip(rich_tooltip(
+            "Show hot OS threads",
+            "Ranks this process's OS threads by CPU time over a short"
+            " window -- works without a trace running, and without"
+            " py-spy/perf/root, by reading /proc directly."))
+        self._hot_threads_dispatcher = _HotThreadsDispatcher(self)
+        self._hot_threads_dispatcher.ready.connect(self._on_hot_threads_ready)
+        self._dump_stacks = self.menu.addAction(
+            "Dump thread stacks now", self._on_dump_stacks)
+        self._dump_stacks.setToolTip(rich_tooltip(
+            "Dump thread stacks now",
+            "Writes an all-threads traceback dump to the diagnostics"
+            " directory -- useful when SciQLop feels slow right now."
+            " The same dump can be triggered from outside the app with"
+            " kill -USR1 <pid>, no elevated privilege needed."))
         self.menu.addSeparator()
         self._open_last = self.menu.addAction(
             "Open last trace in Perfetto", self._on_open_last)
@@ -88,6 +119,39 @@ class ProfilingMenu(QObject):
         tracing.disable()
         self._current_path = None
         self._refresh()
+
+    def _on_show_hot_threads(self) -> None:
+        self._hot_threads.setEnabled(False)
+        self._hot_threads.setText("Show hot OS threads… (sampling…)")
+        pid = os.getpid()
+
+        def _run():
+            threads = hot_threads(pid, window_s=0.5)
+            top = threads[:15]
+            lines = [f"{'CPU s':>7}  {'py':>3}  NAME (tid)"]
+            for t in top:
+                lines.append(f"{t.cpu_seconds:>7.2f}  {'Y' if t.is_python else 'n':>3}  {t.name} ({t.tid})")
+            self._hot_threads_dispatcher.ready.emit("\n".join(lines))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_hot_threads_ready(self, text: str) -> None:
+        self._hot_threads.setEnabled(True)
+        self._hot_threads.setText("Show hot OS threads…")
+        dialog = QDialog(self._host)
+        dialog.setWindowTitle("Hot OS threads (0.5s window)")
+        view = QPlainTextEdit(text, dialog)
+        view.setReadOnly(True)
+        view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(view)
+        dialog.resize(560, 420)
+        dialog.exec()
+
+    def _on_dump_stacks(self) -> None:
+        path = hang_dump.dump_now("manual")
+        QMessageBox.information(self._host, "Profiling",
+                                f"Thread stacks dumped to:\n{path}")
 
     def _on_open_last(self) -> None:
         if not self._last_path:

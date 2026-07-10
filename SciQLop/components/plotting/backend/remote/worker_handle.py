@@ -11,11 +11,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from multiprocessing.connection import Listener
-from typing import Dict
+from typing import Dict, Tuple
 
 from PySide6.QtCore import QObject, QSocketNotifier
 
+from SciQLop.core import tracing
 from . import protocol as P
 
 log = logging.getLogger(__name__)
@@ -30,6 +32,10 @@ class RemoteWorker(QObject):
         self._notifier: QSocketNotifier | None = None
         self._channels: Dict[int, object] = {}
         self._accept_timeout = 15.0   # seconds to wait for the worker to connect
+        # One in-flight request per channel -- matches worker.py's own
+        # coalescing (only the latest REQUEST per channel is ever served),
+        # so a newer send_request for a channel simply replaces its entry.
+        self._pending: Dict[int, Tuple[int, float]] = {}  # channel_id -> (req_id, sent_at)
 
     # --- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -48,6 +54,7 @@ class RemoteWorker(QObject):
         self._conn = self._accept_or_timeout(listener)
         self._notifier = QSocketNotifier(self._conn.fileno(), QSocketNotifier.Type.Read)
         self._notifier.activated.connect(self._on_readable)
+        tracing.counter("remote.worker_alive", 1, cat="remote")
 
     def _accept_or_timeout(self, listener):
         """Accept the worker's connection without blocking the UI forever: if
@@ -88,6 +95,8 @@ class RemoteWorker(QObject):
             except Exception:
                 self._proc.kill()
         self._proc, self._conn, self._notifier = None, None, None
+        self._pending.clear()
+        tracing.counter("remote.worker_alive", 0, cat="remote")
 
     # --- channels -----------------------------------------------------------
     def register_channel(self, channel) -> None:
@@ -98,6 +107,8 @@ class RemoteWorker(QObject):
 
     # --- transport interface (called by RemoteChannel) ----------------------
     def send_request(self, channel_id: int, req_id: int, start: float, stop: float, knobs: dict) -> None:
+        self._pending[channel_id] = (req_id, time.monotonic())
+        tracing.counter("remote.pending_requests", len(self._pending), cat="remote")
         self._send((P.REQUEST, channel_id, req_id, start, stop, knobs))
 
     def send_free(self, channel_id: int, name: str) -> None:
@@ -105,6 +116,7 @@ class RemoteWorker(QObject):
 
     def release(self, channel_id: int) -> None:
         self._channels.pop(channel_id, None)
+        self._pending.pop(channel_id, None)
         self._send((P.RELEASE, channel_id))
 
     def _send(self, msg) -> None:
@@ -129,22 +141,39 @@ class RemoteWorker(QObject):
         tag = msg[0]
         if tag == P.RESULT:
             _, ch, req, name, layout, arity = msg
+            self._settle(ch, req)
             c = self._channels.get(ch)
             if c is not None:
                 c.on_result(req, name, layout, arity)
         elif tag == P.EMPTY:
             _, ch, req = msg
+            self._settle(ch, req)
             c = self._channels.get(ch)
             if c is not None:
                 c.on_empty(req)
         elif tag == P.ERROR:
             _, ch, req, tb = msg
+            self._settle(ch, req)
             c = self._channels.get(ch)
             if c is not None:
                 c.on_error(req, tb)
+
+    def _settle(self, channel_id: int, req_id: int) -> None:
+        """Pop the matching pending entry (a stale req_id -- already
+        superseded by a newer send_request for the same channel -- is left
+        alone, it's not the request this reply is settling) and publish the
+        updated health counters."""
+        pending = self._pending.get(channel_id)
+        if pending is None or pending[0] != req_id:
+            return
+        _, sent_at = self._pending.pop(channel_id)
+        tracing.counter("remote.last_latency_ms", (time.monotonic() - sent_at) * 1000, cat="remote")
+        tracing.counter("remote.pending_requests", len(self._pending), cat="remote")
 
     def _on_worker_died(self) -> None:
         log.warning("remote worker for %s died", self.plugin_key)
         if self._notifier is not None:
             self._notifier.setEnabled(False)
         self._proc, self._conn, self._notifier = None, None, None
+        self._pending.clear()
+        tracing.counter("remote.worker_alive", 0, cat="remote")
