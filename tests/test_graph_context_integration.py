@@ -513,13 +513,16 @@ def test_inspector_tree_tooltip_renders_on_graph_row(qtbot):
         panel_idx = find('tree_tt')
         assert panel_idx.isValid(), "tree_tt panel row not found in PlotsModel"
         idx = find(name, panel_idx)
-        for _ in range(50):
+
+        def _row_found():
+            nonlocal panel_idx, idx
             if idx.isValid():
-                break
-            qtbot.wait(20)
+                return True
             panel_idx = find('tree_tt')
             idx = find(name, panel_idx)
-        assert idx.isValid(), f"{name!r} row not found under tree_tt"
+            return idx.isValid()
+
+        qtbot.waitUntil(_row_found, timeout=1000)
         center = tree.visualRect(idx).center()
         ev = QHelpEvent(QEvent.Type.ToolTip, center,
                         tree.viewport().mapToGlobal(center))
