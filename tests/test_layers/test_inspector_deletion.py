@@ -54,16 +54,14 @@ class TestRangeOnlyLayerDeletion:
                     Span(start=start + 3.0, stop=start + 4.0, color="#bdc3c7")]
 
         renderer = wire_layer_renderer(plot, hour_grid, panel=panel)
-        qtbot.wait(50)
+        qtbot.waitUntil(lambda: len(renderer._spans) == 2, timeout=1000)
 
-        assert len(renderer._spans) == 2, "Spans should be rendered initially"
         assert renderer in plot._layer_renderers
 
         ext = renderer._layer_ext
         ext.deleteLater()
-        qtbot.wait(100)
+        qtbot.waitUntil(lambda: renderer._disposed is True, timeout=1000)
 
-        assert renderer._disposed is True
         assert renderer._spans == []
         assert renderer not in getattr(plot, "_layer_renderers", [])
 
@@ -106,15 +104,13 @@ class TestLayerWithKnobsDeletion:
 
         specs = [ThresholdKnob(name="level", default=0.5)]
         renderer = wire_layer_renderer(plot, my_layer, specs=specs, panel=panel)
-        qtbot.wait(50)
+        qtbot.waitUntil(lambda: len(renderer._hlines) >= 1, timeout=1000)
 
-        assert len(renderer._hlines) >= 1
         assert renderer._visual_knob_dispose is not None
 
         renderer._knob_inspector_ext.deleteLater()
-        qtbot.wait(100)
+        qtbot.waitUntil(lambda: renderer._disposed is True, timeout=1000)
 
-        assert renderer._disposed is True
         assert renderer._hlines == []
         assert renderer._visual_knob_dispose is None
         assert renderer not in getattr(plot, "_layer_renderers", [])
@@ -133,12 +129,10 @@ class TestDataAwareLayerDeletion:
             return [Span(start=0.0, stop=10.0)]
 
         renderer = wire_layer_renderer(plot, my_layer, panel=panel)
-        qtbot.wait(50)
-        assert renderer.data_aware is True
+        qtbot.waitUntil(lambda: renderer.data_aware is True, timeout=1000)
         assert len(renderer._spans) == 1
 
         renderer._layer_ext.deleteLater()
-        qtbot.wait(100)
+        qtbot.waitUntil(lambda: renderer._disposed is True, timeout=1000)
 
-        assert renderer._disposed is True
         assert renderer._spans == []
