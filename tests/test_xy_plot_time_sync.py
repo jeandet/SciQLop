@@ -29,9 +29,8 @@ def test_xy_function_plot_is_time_synced_to_panel(plot_panel, qtbot):
 
     seen.clear()
     plot_panel.time_range = TimeRange(t0 + 200, t0 + 300)
-    qtbot.wait(80)
+    qtbot.waitUntil(lambda: len(seen) > 0, timeout=1000)
 
-    assert seen, "XY function callback was not invoked on a panel time-range change"
     assert seen[-1] == pytest.approx((t0 + 200, t0 + 300))
 
 
@@ -52,9 +51,8 @@ def test_timeseries_function_plot_still_time_synced(plot_panel, qtbot):
     seen.clear()
     t0 = 1.7e9
     plot_panel.time_range = TimeRange(t0, t0 + 50)
-    qtbot.wait(80)
+    qtbot.waitUntil(lambda: len(seen) > 0, timeout=1000)
 
-    assert seen, "time-series function callback not invoked on time change"
     assert seen[-1] == pytest.approx((t0, t0 + 50))
 
 
