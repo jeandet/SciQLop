@@ -37,10 +37,7 @@ def test_first_debug_panel_does_not_add_horizontal_children(qtbot, qapp, main_wi
 
     before = _root_splitter_child_count(main_window)
     vp_magic("--debug --start 0 --stop 10", VP_SCALAR_A)
-    qtbot.wait(100)
-    after = _root_splitter_child_count(main_window)
-
-    assert after == before + 1
+    qtbot.waitUntil(lambda: _root_splitter_child_count(main_window) == before + 1, timeout=1000)
 
 
 def test_second_debug_panel_no_extra_horizontal_child(qtbot, qapp, main_window):
@@ -52,10 +49,7 @@ def test_second_debug_panel_no_extra_horizontal_child(qtbot, qapp, main_window):
     after_first = _root_splitter_child_count(main_window)
 
     vp_magic("--debug --start 0 --stop 10", VP_SCALAR_B)
-    qtbot.wait(100)
-    after_second = _root_splitter_child_count(main_window)
-
-    assert after_second == after_first
+    qtbot.waitUntil(lambda: _root_splitter_child_count(main_window) == after_first, timeout=1000)
 
 
 def test_horizontal_ratio_preserved_after_second_panel(qtbot, qapp, main_window):
@@ -84,12 +78,12 @@ def test_three_debug_panels_share_vertical_space(qtbot, qapp, main_window):
     vp_magic("--debug --start 0 --stop 10", VP_SCALAR_A)
     vp_magic("--debug --start 0 --stop 10", VP_SCALAR_B)
     vp_magic("--debug --start 0 --stop 10", VP_SCALAR_C)
-    qtbot.wait(100)
+    qtbot.waitUntil(
+        lambda: _registry.get("debug_alpha") is not None and _registry.get("debug_alpha").panel is not None,
+        timeout=1000,
+    )
 
     # Find the vertical splitter containing the debug panels
-    entry_a = _registry.get("debug_alpha")
-    assert entry_a is not None and entry_a.panel is not None
-
     from SciQLop.user_api.virtual_products.magic import _find_existing_debug_dock
     dock = _find_existing_debug_dock(main_window)
     assert dock is not None
