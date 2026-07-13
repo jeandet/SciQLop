@@ -74,8 +74,7 @@ def test_virtual_product(main_window, qtbot, vp_callback, name):
     panel = create_plot_panel()
     panel.time_range = TimeRange(0.0, 10.0)
     plt, graph = panel.plot(vp)
-    for _ in range(10):
-        qtbot.wait(10)
+    qtbot.waitUntil(lambda: graph.data[0] is not None and len(graph.data[0]) > 0, timeout=1000)
     x, y = graph.data
     assert len(x) > 0
     assert len(y) > 0
