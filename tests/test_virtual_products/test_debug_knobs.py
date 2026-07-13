@@ -28,22 +28,25 @@ def test_debug_replot_preserves_knob_values(qtbot, qapp, main_window):
         "    return np.linspace(start, stop, n), np.zeros(n) + fft\n"
     )
     vp_magic("--debug --start 0 --stop 10", cell)
-    qtbot.wait(100)
+
+    def _has_knob_state():
+        panel = getattr(_registry.get("my_vp"), "panel", None)
+        return panel is not None and _find_knob_state(panel) is not None
+
+    qtbot.waitUntil(_has_knob_state, timeout=1000)
     entry = _registry.get("my_vp")
     assert entry is not None
     assert entry.panel is not None
     assert entry.panel.plots(), "debug panel should have a plot"
     state = _find_knob_state(entry.panel)
-    assert state is not None, "expected a graph with knob state"
     assert state.values["fft"] == 256
 
     state.set_value("fft", 1024)
     qtbot.wait(50)
 
     vp_magic("--debug --start 0 --stop 10", cell)
-    qtbot.wait(100)
+    qtbot.waitUntil(lambda: _find_knob_state(entry.panel) is not None, timeout=1000)
     new_state = _find_knob_state(entry.panel)
-    assert new_state is not None
     assert new_state.values["fft"] == 1024
 
 
