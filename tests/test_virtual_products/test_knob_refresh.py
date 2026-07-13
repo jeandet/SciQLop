@@ -27,10 +27,7 @@ def test_changing_knob_triggers_callback_refetch(qtbot, qapp, main_window):
     )
     ns = {}
     vp_magic("--debug --start 0 --stop 10", cell, local_ns=ns)
-    qtbot.wait(200)
-
-    calls_before = list(ns["_CALLS"])
-    assert calls_before, "callback should have been invoked once during debug setup"
+    qtbot.waitUntil(lambda: len(ns["_CALLS"]) > 0, timeout=1000)
 
     from SciQLop.user_api.virtual_products.registry import _registry
     entry = _registry.get("my_vp")
