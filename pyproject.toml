@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    "SciQLopPlots==0.29.3",
+    "SciQLopPlots==0.29.5",
     "cloudpickle",
     "defusedxml",
     "speasy>=1.6.1",
