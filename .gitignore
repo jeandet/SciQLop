@@ -24,3 +24,7 @@ documentation/*
 .local-wack-run.ps1
 launcher.obj
 launcher.res
+*.swo
+.flatpak-builder/
+test-reports/
+docs/screenshots/output/
