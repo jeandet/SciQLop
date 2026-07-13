@@ -79,9 +79,8 @@ class TestPanelScopeRendering:
             return [Span(start=start + 1.0, stop=start + 2.0)]
 
         renderer = wire_layer_renderer(plot, hour_grid, panel=panel, scope="panel")
-        qtbot.wait(50)
+        qtbot.waitUntil(lambda: renderer._scope == "panel", timeout=1000)
 
-        assert renderer._scope == "panel"
         assert len(renderer._spans) == 1
         assert isinstance(renderer._spans[0], MultiPlotsVerticalSpan)
 
@@ -94,8 +93,7 @@ class TestPanelScopeRendering:
             return [Span(start=0.0, stop=1.0)]
 
         renderer = wire_layer_renderer(plot, my_layer, panel=panel, scope="auto")
-        qtbot.wait(50)
-        assert renderer._scope == "panel"
+        qtbot.waitUntil(lambda: renderer._scope == "panel", timeout=1000)
         assert isinstance(renderer._spans[0], MultiPlotsVerticalSpan)
 
 
@@ -109,8 +107,7 @@ class TestPlotScopeRendering:
             return [Span(start=0.0, stop=1.0)]
 
         renderer = wire_layer_renderer(plot, my_layer, panel=panel, scope="plot")
-        qtbot.wait(50)
-        assert renderer._scope == "plot"
+        qtbot.waitUntil(lambda: renderer._scope == "plot", timeout=1000)
         assert isinstance(renderer._spans[0], SciQLopVerticalSpan)
         assert not isinstance(renderer._spans[0], MultiPlotsVerticalSpan)
 
@@ -126,8 +123,7 @@ class TestPlotScopeRendering:
             return [Span(start=0.0, stop=1.0)]
 
         renderer = wire_layer_renderer(plot, detector, panel=panel, scope="auto")
-        qtbot.wait(50)
-        assert renderer._scope == "plot"
+        qtbot.waitUntil(lambda: renderer._scope == "plot", timeout=1000)
         assert isinstance(renderer._spans[0], SciQLopVerticalSpan)
         assert not isinstance(renderer._spans[0], MultiPlotsVerticalSpan)
 
