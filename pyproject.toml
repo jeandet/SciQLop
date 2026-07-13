@@ -85,6 +85,7 @@ dev = [
     # available at test time.
     "tscat>=0.4.0",
     "tscat_gui>=0.7.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [project.gui-scripts]
