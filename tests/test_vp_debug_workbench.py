@@ -20,11 +20,11 @@ def test_debug_mode_opens_panel(qtbot, qapp, main_window):
     from SciQLop.user_api.virtual_products.magic import vp_magic, _registry
 
     vp_magic("--debug --start 0 --stop 10", VP_DEBUG_SCALAR)
-    qtbot.wait(100)
+    qtbot.waitUntil(lambda: getattr(_registry.get("debug_sine"), "panel", None) is not None,
+                     timeout=1000)
 
     entry = _registry.get("debug_sine")
     assert entry is not None
-    assert entry.panel is not None
 
 
 def test_debug_mode_reuses_panel(qtbot, qapp, main_window):
@@ -43,11 +43,11 @@ def test_debug_mode_shows_error_overlay(qtbot, qapp, main_window):
     from SciQLop.user_api.virtual_products.magic import vp_magic, _registry
 
     vp_magic("--debug --start 0 --stop 10", VP_DEBUG_ERROR)
-    qtbot.wait(100)
+    qtbot.waitUntil(lambda: getattr(_registry.get("debug_broken"), "panel", None) is not None,
+                     timeout=1000)
 
     entry = _registry.get("debug_broken")
     assert entry is not None
-    assert entry.panel is not None
     # The overlay should be visible with the error
     overlay = getattr(entry.panel, '_vp_overlay', None)
     assert overlay is not None
