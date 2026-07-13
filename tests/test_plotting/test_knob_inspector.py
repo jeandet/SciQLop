@@ -24,8 +24,7 @@ def test_widget_change_debounces_into_state(qtbot, monkeypatch):
     qtbot.addWidget(sec)
     sec.widget_for("fft").set_value(1024)
     sec.widget_for("fft").value_changed.emit(1024)
-    qtbot.wait(50)
-    assert state.values["fft"] == 1024
+    qtbot.waitUntil(lambda: state.values["fft"] == 1024, timeout=1000)
 
 
 def test_state_change_resyncs_widget_without_loop(qtbot):
@@ -42,8 +41,7 @@ def test_reset_button_restores_defaults(qtbot):
     sec = KnobsSection(state, debounce_ms=10)
     qtbot.addWidget(sec)
     sec.reset_to_defaults()
-    qtbot.wait(50)
-    assert state.values["fft"] == 256
+    qtbot.waitUntil(lambda: state.values["fft"] == 256, timeout=1000)
 
 
 def test_manual_apply_knob_skips_debouncer(qtbot):
