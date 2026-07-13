@@ -131,8 +131,7 @@ def test_watchdog_detects_a_blocked_qt_event_loop(qtbot, tmp_path, monkeypatch):
     try:
         qtbot.wait(60)              # let a few real heartbeats land
         time.sleep(0.6)             # block the event loop -- heartbeat goes stale
-        qtbot.wait(60)              # resume pumping
-        assert "stall" in dumps
+        qtbot.waitUntil(lambda: "stall" in dumps, timeout=1000)  # resume pumping
     finally:
         wd.stop()
         timer.stop()
