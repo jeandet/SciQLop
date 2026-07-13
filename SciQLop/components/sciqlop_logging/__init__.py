@@ -1,6 +1,6 @@
 import logging
 import os
-from .logger import  SciQLopLogger, listen_sciqlop_logger, set_log_level, getLogger
+from .logger import  SciQLopLogger, listen_sciqlop_logger, set_log_level, getLogger, is_debug_mode
 
 
 INFO = logging.INFO

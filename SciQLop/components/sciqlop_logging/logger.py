@@ -11,6 +11,10 @@ else:
     __default_log_level__ = os.environ.get('SCIQLOP_LOG_LEVEL', 'INFO')
 
 
+def is_debug_mode() -> bool:
+    return 'SCIQLOP_DEBUG' in os.environ
+
+
 class _Logger(QObject):
     new_line = Signal(str)
 
