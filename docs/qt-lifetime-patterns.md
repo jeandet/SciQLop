@@ -46,23 +46,33 @@ exposed to Python, not just `SciQLopPlot`.
 
 ## Safe patterns, in order of preference
 
-### 1. Use Qt's receiver-context `connect()` overload
+### 1. Connect to a bound method of the receiving QObject, not a lambda
 
-The 5-argument form: `signal.connect(context, slot)`. Qt disconnects the
-slot when **either** endpoint dies, before either reaches an invalid
-state. No `destroyed` handler, no manual disconnect, no cached
-references, no cleanup logic.
+PySide6 auto-disconnects a signal connection when the **receiver QObject
+is destroyed** — but only when it can identify a receiver, which it does
+for a bound method of a `QObject` subclass (via the method's `__self__`).
+A lambda or plain function has no identifiable receiver, so PySide6 ties
+that connection's lifetime to the **sender** instead — if the sender
+outlives `self` (e.g. it's an app-level singleton), the lambda's closure
+keeps `self` alive forever, and so does everything `self` owns (e.g. a
+`QWebEngineView` and its Chromium renderer process — see
+`SciQLop/core/web_channel_page.py`'s `_on_theme_changed`).
 
 ```python
-# Bad — connection has no lifetime owner; you must remember to disconnect
+# Bad — lambda has no receiver Qt can track; connection lives as long as
+# `axis` does, keeping self alive even after self should be collectible
 axis.range_changed.connect(lambda r: self._on_range(r))
 
-# Good — Qt auto-disconnects when self dies
-axis.range_changed.connect(self, lambda r: self._on_range(r))
+# Good — bound method has an identifiable receiver (self); Qt
+# auto-disconnects when self's C++ object is destroyed
+axis.range_changed.connect(self._on_range)
 ```
 
-This is the idiomatic Qt answer for "this connection should live as long
-as both endpoints" and works in PySide6 the same way it does in C++.
+Note: there is no working 5-argument `signal.connect(context, slot)`
+receiver-context overload in PySide6 (unlike Qt/C++'s
+`QObject::connect(sender, signal, context, functor)`) — calling
+`signal.connect(some_qobject, callable)` raises `TypeError: Expected
+signal or callable, got "<type>"`. Use a bound method instead.
 
 ### 2. Cache the reference at connect time, not at disconnect time
 

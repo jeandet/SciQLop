@@ -7,6 +7,9 @@ blocks a local-origin document from loading remote URLs unless
 ``LocalContentCanAccessRemoteUrls`` is enabled — without it every card falls
 back to the emoji placeholder and the screenshot carousel stays empty.
 """
+import gc
+import weakref
+
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from SciQLop.components.appstore.web_appstore_page import AppStorePage
 
@@ -17,3 +20,19 @@ def test_local_page_can_load_remote_images(qapp):
     assert settings.testAttribute(
         QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls), \
         "remote plugin images won't load from the file:// origin without this"
+    page.deleteLater()
+    qapp.processEvents()
+
+
+def test_page_is_collectible_after_delete(qapp, qtbot):
+    """A WebChannelPage must not be kept alive forever by its theme_changed
+    connection -- every constructed page (and its QWebEngineView's Chromium
+    renderer process) otherwise survives for the whole process lifetime,
+    since sciqlop_app() is a singleton that outlives any individual page."""
+    page = AppStorePage()
+    ref = weakref.ref(page)
+    page.deleteLater()
+    qtbot.wait(10)
+    del page
+    gc.collect()
+    assert ref() is None

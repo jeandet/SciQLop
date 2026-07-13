@@ -49,10 +49,13 @@ class WebChannelPage(QWidget):
         layout.addWidget(self._view)
 
         from SciQLop.core.sciqlop_application import sciqlop_app
-        sciqlop_app().theme_changed.connect(lambda _: self._load_html())
+        sciqlop_app().theme_changed.connect(self._on_theme_changed)
 
     def _create_backend(self) -> QObject:
         raise NotImplementedError
+
+    def _on_theme_changed(self, _palette_name: str) -> None:
+        self._load_html()
 
     def _load_html(self):
         html = self._render_template()
