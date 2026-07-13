@@ -217,9 +217,7 @@ class TestRendererImmediate:
         # Push new data
         t2 = np.linspace(0, 50, 50, dtype=np.float64)
         graph.set_data(t2, np.column_stack([np.sin(t2), np.cos(t2), t2 * 0]))
-        qtbot.wait(200)
-
-        assert len(call_count) > 0, "data_changed did not trigger layer callback"
+        qtbot.waitUntil(lambda: len(call_count) > 0, timeout=2000)
 
     def test_range_only_layer_not_data_aware(self, ts_plot, qtbot):
         from SciQLop.user_api.layers._renderer import LayerRenderer
@@ -271,10 +269,8 @@ class TestRendererDeferred:
         t, bx, by, bz = _make_vector_data()
         ts_plot.line(t, np.column_stack([bx, by, bz]),
                      labels=["Bx", "By", "Bz"])
-        qtbot.wait(300)
+        qtbot.waitUntil(lambda: renderer._data_source is not None, timeout=2000)
 
-        assert renderer._data_source is not None, \
-            "Deferred binding did not find graph after graph_list_changed"
         assert len(call_count) > 0, \
             "Layer callback was not invoked after deferred bind"
 
@@ -324,10 +320,8 @@ class TestRendererDeferred:
             # Push real data — triggers data_changed which should cause deferred bind
             t, bx, by, bz = _make_vector_data()
             graph.set_data(t, np.column_stack([bx, by, bz]))
-            qtbot.wait(300)
+            qtbot.waitUntil(lambda: renderer._data_source is not None, timeout=2000)
 
-            assert renderer._data_source is not None, \
-                "Renderer did not bind after data arrived on existing graph"
             assert len(call_count) > 0, \
                 "Callback not invoked after late data arrival"
 
@@ -346,10 +340,7 @@ class TestRendererDeferred:
         t, bx, by, bz = _make_vector_data()
         ts_plot.line(t, np.column_stack([bx, by, bz]),
                      labels=["Bx", "By", "Bz"])
-        qtbot.wait(300)
-
-        assert renderer._graph_list_connection is None, \
-            "graph_list_changed listener should disconnect after successful bind"
+        qtbot.waitUntil(lambda: renderer._graph_list_connection is None, timeout=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -392,10 +383,8 @@ class TestWireLayerRenderer:
         t, bx, by, bz = _make_vector_data()
         ts_plot.line(t, np.column_stack([bx, by, bz]),
                      labels=["Bx", "By", "Bz"])
-        qtbot.wait(300)
+        qtbot.waitUntil(lambda: renderer._data_source is not None, timeout=2000)
 
-        assert renderer._data_source is not None, \
-            "wire_layer_renderer deferred bind failed"
         assert len(invocations) > 0, \
             "Callback not invoked after deferred bind"
 
