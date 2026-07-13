@@ -20,9 +20,8 @@ class TestDragAndDropWorkflow:
         qtbot.wait(50)
         proxy = tree.model()
         proxy.setFilterFixedString("TestMultiComponent")
-        qtbot.wait(50)
+        qtbot.waitUntil(lambda: proxy.index(0, 0, proxy.index(0, 0)).isValid(), timeout=1000)
         proxy_index = proxy.index(0, 0, proxy.index(0, 0))
-        assert proxy_index.isValid(), "filter did not match TestMultiComponent — is test_plugin loaded?"
         src_index = proxy.mapToSource(proxy_index)
         # Use ProductsModel.instance() rather than proxy.sourceModel(): the
         # latter returns a Python wrapper that takes ownership and deleteLaters
@@ -36,6 +35,4 @@ class TestDragAndDropWorkflow:
         qtbot.wait(50)
         target_plot = panel_impl.plots()[0]
         panel_impl._product_plot_callback.call(target_plot, mime)
-        qtbot.wait(100)
-
-        assert len(plot_panel.plots) > 0
+        qtbot.waitUntil(lambda: len(plot_panel.plots) > 0, timeout=1000)
