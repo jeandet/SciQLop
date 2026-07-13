@@ -1448,7 +1448,7 @@ wheels = [
 
 [[package]]
 name = "jupyqt"
-version = "0.6.1"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1458,9 +1458,9 @@ dependencies = [
     { name = "jupyverse", extra = ["jupyterlab"] },
     { name = "pyside6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/04/b4003695728c33c4ae08651af19d2e8e87bff92d53a3b9b6b0cb23949de8/jupyqt-0.6.1.tar.gz", hash = "sha256:3785f014f07615b2966a7762c5fbf2d8b8e76882ae2d2f147fc86c56569be254", size = 74074, upload-time = "2026-06-25T21:47:46.057Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/3e/faea939cf6baf0b785fe11c6ecd32ba28e9d931510c6efc600344c94e9e1/jupyqt-0.6.2.tar.gz", hash = "sha256:8b6b2855f0a3c9e52a955c48176a22ede2a534547a9f52e43834db753f5d396c", size = 76141, upload-time = "2026-07-12T10:07:55.685Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/2a/e26934d563351400776c90e7564559e0a692cab9d0c3bd90c53e3afe2872/jupyqt-0.6.1-py3-none-any.whl", hash = "sha256:62904511e16679e676602725827750c4521477403fea343814337a27ea42fe1e", size = 29764, upload-time = "2026-06-25T21:47:44.767Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/be/c3e061ba40671df22c16810e00a218755ff8f273d84d92da7a78b5108a73/jupyqt-0.6.2-py3-none-any.whl", hash = "sha256:b62db45262dd9ff8e4bbed07ecf482f3990aad8595924258602d11f738545f71", size = 30592, upload-time = "2026-07-12T10:07:54.369Z" },
 ]
 
 [[package]]
@@ -3581,7 +3581,7 @@ requires-dist = [
     { name = "ipython" },
     { name = "ipywidgets" },
     { name = "jinja2" },
-    { name = "jupyqt", specifier = ">=0.6.1" },
+    { name = "jupyqt", specifier = ">=0.6.2" },
     { name = "jupyterlab-widgets" },
     { name = "keyring" },
     { name = "matplotlib", specifier = "==3.10.8" },
