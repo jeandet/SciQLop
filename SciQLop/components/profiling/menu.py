@@ -49,33 +49,38 @@ class ProfilingMenu(QObject):
             "Stop trace",
             "Stop recording and save the current trace."))
         self.menu.addSeparator()
-        self._hot_threads = self.menu.addAction(
-            "Show hot OS threads…", self._on_show_hot_threads)
-        self._hot_threads.setToolTip(rich_tooltip(
-            "Show hot OS threads",
-            "Ranks this process's OS threads by CPU time over a short"
-            " window -- works without a trace running, and without"
-            " py-spy/perf/root, by reading /proc directly."))
-        self._hot_threads_dispatcher = _HotThreadsDispatcher(self)
-        self._hot_threads_dispatcher.ready.connect(self._on_hot_threads_ready)
-        self._dump_stacks = self.menu.addAction(
-            "Dump thread stacks now", self._on_dump_stacks)
-        self._dump_stacks.setToolTip(rich_tooltip(
-            "Dump thread stacks now",
-            "Writes an all-threads traceback dump to the diagnostics"
-            " directory -- useful when SciQLop feels slow right now."
-            " The same dump can be triggered from outside the app with"
-            " kill -USR1 <pid>, no elevated privilege needed."))
-        self._flush_samples = self.menu.addAction(
-            "Flush sampling history", self._on_flush_samples)
-        self._flush_samples.setToolTip(rich_tooltip(
-            "Flush sampling history",
-            "Writes the last minute or so of periodic all-threads stack"
-            " samples to the diagnostics directory -- shows what was"
-            " running even in code nobody hand-instrumented with a trace"
-            " zone. The sampler itself is off by default; enable it in"
-            " Settings > Profiling."))
-        self.menu.addSeparator()
+        self._hot_threads = None
+        self._hot_threads_dispatcher = None
+        self._dump_stacks = None
+        self._flush_samples = None
+        if sciqlop_logging.is_debug_mode():
+            self._hot_threads = self.menu.addAction(
+                "Show hot OS threads…", self._on_show_hot_threads)
+            self._hot_threads.setToolTip(rich_tooltip(
+                "Show hot OS threads",
+                "Ranks this process's OS threads by CPU time over a short"
+                " window -- works without a trace running, and without"
+                " py-spy/perf/root, by reading /proc directly."))
+            self._hot_threads_dispatcher = _HotThreadsDispatcher(self)
+            self._hot_threads_dispatcher.ready.connect(self._on_hot_threads_ready)
+            self._dump_stacks = self.menu.addAction(
+                "Dump thread stacks now", self._on_dump_stacks)
+            self._dump_stacks.setToolTip(rich_tooltip(
+                "Dump thread stacks now",
+                "Writes an all-threads traceback dump to the diagnostics"
+                " directory -- useful when SciQLop feels slow right now."
+                " The same dump can be triggered from outside the app with"
+                " kill -USR1 <pid>, no elevated privilege needed."))
+            self._flush_samples = self.menu.addAction(
+                "Flush sampling history", self._on_flush_samples)
+            self._flush_samples.setToolTip(rich_tooltip(
+                "Flush sampling history",
+                "Writes the last minute or so of periodic all-threads stack"
+                " samples to the diagnostics directory -- shows what was"
+                " running even in code nobody hand-instrumented with a trace"
+                " zone. The sampler itself is off by default; enable it in"
+                " Settings > Profiling."))
+            self.menu.addSeparator()
         self._open_last = self.menu.addAction(
             "Open last trace in Perfetto", self._on_open_last)
         self._open_last.setToolTip(rich_tooltip(
