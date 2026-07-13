@@ -29,9 +29,8 @@ def test_scrolls_to_bottom_on_new_output(qtbot):
     v = _view(qtbot)
     v.render_messages([_assistant(i) for i in range(60)])
     v.flush_now()
-    qtbot.wait(50)  # let the deferred (singleShot) scroll fire
     bar = v.verticalScrollBar()
-    assert bar.maximum() > 0             # content taller than the viewport
+    qtbot.waitUntil(lambda: bar.maximum() > 0, timeout=1000)  # content taller than the viewport
     assert bar.value() == bar.maximum()  # parked at the newest message
 
 
