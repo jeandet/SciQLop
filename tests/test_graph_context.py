@@ -208,8 +208,7 @@ def test_destroy_evicts_rich_refs(qtbot):
     attach_context(g, ctx, GraphRichRefs(callback=lambda s, e: None))
     assert rich_of("g7") is not None
     g.deleteLater()
-    qtbot.wait(50)
-    assert rich_of("g7") is None
+    qtbot.waitUntil(lambda: rich_of("g7") is None, timeout=1000)
 
 
 def test_is_importable_module_level_true():
