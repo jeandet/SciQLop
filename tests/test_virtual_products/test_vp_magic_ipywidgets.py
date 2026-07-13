@@ -53,9 +53,8 @@ def test_debug_displays_ipywidgets_when_kernel_present(qtbot, qapp, main_window,
         "    return np.linspace(start, stop, n), np.zeros(n) + fft\n"
     )
     vp_magic("--debug --start 0 --stop 10", cell)
-    qtbot.wait(100)
+    qtbot.waitUntil(lambda: len(displayed) > 0, timeout=1000)
 
-    assert displayed, "expected at least one ipywidget HBox to be displayed"
     box = displayed[-1]
     assert isinstance(box, fake.HBox)
     assert box.children, "HBox should have widget children for knobs"
