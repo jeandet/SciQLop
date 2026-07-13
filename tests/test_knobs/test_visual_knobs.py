@@ -301,12 +301,11 @@ def test_data_span_resolves_when_panel_time_range_set_after_construction(sciqlop
     span = _DataSpan(sciqlop_plot, spec, state)
 
     sciqlop_panel.set_time_axis_range(SciQLopPlotRange(1_447_813_470.0, 1_447_818_240.0))
-    qtbot.wait(50)
-
-    val = state.values["window"]
     expected_start = 1_447_813_470.0 + 0.3 * (1_447_818_240.0 - 1_447_813_470.0)
     expected_stop = 1_447_813_470.0 + 0.7 * (1_447_818_240.0 - 1_447_813_470.0)
-    assert val.start() == pytest.approx(expected_start)
+    qtbot.waitUntil(lambda: state.values["window"].start() == pytest.approx(expected_start), timeout=1000)
+
+    val = state.values["window"]
     assert val.stop() == pytest.approx(expected_stop)
     assert span._span.range.start() == pytest.approx(expected_start)
     assert span._span.range.stop() == pytest.approx(expected_stop)
@@ -325,10 +324,9 @@ def test_data_span_follows_panel_view_to_stay_visible(sciqlop_panel, sciqlop_plo
     span = _DataSpan(sciqlop_plot, spec, state)
 
     sciqlop_panel.set_time_axis_range(SciQLopPlotRange(500.0, 600.0))
-    qtbot.wait(50)
+    qtbot.waitUntil(lambda: state.values["window"].start() == pytest.approx(530.0), timeout=1000)
 
     val = state.values["window"]
-    assert val.start() == pytest.approx(530.0)
     assert val.stop() == pytest.approx(570.0)
     span.cleanup()
 
@@ -348,10 +346,9 @@ def test_data_span_drag_re_records_fraction_for_subsequent_pans(sciqlop_panel, s
     assert state.values["window"].start() == pytest.approx(120.0)
 
     sciqlop_panel.set_time_axis_range(SciQLopPlotRange(500.0, 600.0))
-    qtbot.wait(50)
+    qtbot.waitUntil(lambda: state.values["window"].start() == pytest.approx(520.0), timeout=1000)
 
     val = state.values["window"]
-    assert val.start() == pytest.approx(520.0)
     assert val.stop() == pytest.approx(580.0)
     span.cleanup()
 
@@ -442,8 +439,7 @@ def test_movable_hline_updates_state_on_position_change(sciqlop_plot, qtbot):
     hline = _MovableHLine(sciqlop_plot, spec, state)
 
     hline._line.set_position(7.5)
-    qtbot.wait(50)
-    assert state.values["thr"] == pytest.approx(7.5)
+    qtbot.waitUntil(lambda: state.values["thr"] == pytest.approx(7.5), timeout=1000)
     hline.cleanup()
 
 
