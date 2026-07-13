@@ -96,6 +96,36 @@ def test_plot_product_remote_scalar_builds_remote_graph(qtbot, main_window):
     qtbot.wait(500)
 
 
+def test_plot_product_remote_spectrogram_creates_time_series_plot(qtbot, main_window):
+    """A remote spectrogram plotted into a brand-new subplot (the common
+    append case, plot_index=-1) must land on a TimeSeries plot.
+
+    `SciQLopMultiPlotPanel.create_plot()`'s C++ default is `PlotType.BasicXY`
+    — `plot_remote._new_plot` was calling it with no arguments, so every
+    out_of_process spectrogram silently landed on an XY plot with no time
+    axis and no visible colormap instead of the panel's usual TimeSeries plot."""
+    from SciQLop.components.plotting.backend.easy_provider import EasySpectrogram
+    from SciQLop.components.plotting.ui.time_sync_panel import plot_product
+    from SciQLop.user_api.plot import create_plot_panel
+    from SciQLopPlots import SciQLopTimeSeriesPlot
+
+    EasySpectrogram(
+        path="test_remote_plot/spec_ts",
+        get_data_callback=_spec_source,
+        metadata={},
+        out_of_process=True,
+    )
+
+    panel = create_plot_panel()
+    plot, graph = plot_product(panel._impl, ["test_remote_plot", "spec_ts"])
+
+    assert isinstance(plot, SciQLopTimeSeriesPlot), (
+        f"remote spectrogram must create a TimeSeries plot, got {type(plot).__name__}"
+    )
+
+    qtbot.wait(200)
+
+
 def test_non_remote_product_unaffected(qtbot, main_window, simple_vp_callback):
     """plot_product on a normal (non-remote) product still follows the
     existing callback path and returns a valid (plot, graph) pair."""

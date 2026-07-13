@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    "SciQLopPlots==0.29.2",
+    "SciQLopPlots==0.29.3",
     "cloudpickle",
     "defusedxml",
     "speasy>=1.6.1",
@@ -47,7 +47,7 @@ dependencies = [
     "scipy",
     "pyside6==6.11.1",
     "shiboken6==6.11.1",
-    "PySide6-QtAds==4.5.0.5",
+    "PySide6-QtAds==5.0.0",
     "ipython",
     "ipywidgets",
     "jupyterlab_widgets",

@@ -3,20 +3,20 @@ from __future__ import annotations
 
 import itertools
 
-from SciQLopPlots import SciQLopPlot, ParameterType
+from SciQLopPlots import SciQLopPlot, ParameterType, PlotType
 from .channel import RemoteChannel
 from .registry import remote_registry
 
 _channel_ids = itertools.count(1)
 
 
-def _new_plot(target):
+def _new_plot(target, plot_type: PlotType):
     if isinstance(target, SciQLopPlot):
         return target
-    return target.create_plot()
+    return target.create_plot(plot_type=plot_type)
 
 
-def plot_remote(target, node, provider, product: list):
+def plot_remote(target, node, provider, product: list, *, plot_type: PlotType = PlotType.TimeSeries):
     """Create a remote-backed graph for *product* on *target*.
 
     Returns (plot, graph).  The graph's destroyed signal disposes the channel
@@ -25,7 +25,7 @@ def plot_remote(target, node, provider, product: list):
     Qt lifetime rules: disposed never touches the dying widget.
     """
     reg = remote_registry()
-    plot = _new_plot(target)
+    plot = _new_plot(target, plot_type)
     ptype = node.parameter_type()
     if ptype == ParameterType.Spectrogram:
         graph = plot.add_remote_color_map(node.name())

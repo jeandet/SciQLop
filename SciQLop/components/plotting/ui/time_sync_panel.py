@@ -665,8 +665,10 @@ def plot_product(p: Union[SciQLopPlot, SciQLopMultiPlotPanel, SciQLopNDProjectio
     from SciQLop.components.plotting.backend.remote.registry import remote_registry
     if remote_registry().is_remote(product):
         from SciQLop.components.plotting.backend.remote.plot_remote import plot_remote
+        from SciQLopPlots import PlotType
         target, _ = _resolve_plot_target(p, kwargs)
-        r = plot_remote(target, node, provider, product)
+        plot_type = kwargs.get("plot_type", PlotType.TimeSeries)
+        r = plot_remote(target, node, provider, product, plot_type=plot_type)
         graph = _graph_from_result(r)
         channel = getattr(graph, "_remote_channel", None) if graph is not None else None
         if channel is not None:
