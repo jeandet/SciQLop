@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtCore import Qt, QRect, Signal, QEvent
 from PySide6.QtGui import QPainter, QColor, QPainterPath
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
@@ -47,6 +48,7 @@ class CoachMark(QWidget):
 
     def show_for(self, target: QWidget, title: str, body: str, *,
                  rect: QRect | None = None, show_dismiss: bool = True) -> None:
+        self._detach_target()
         self._target = target
         self._target_local_rect = rect
         target.installEventFilter(self)
@@ -59,6 +61,15 @@ class CoachMark(QWidget):
         self.show()
         self.raise_()
         self.setFocus()
+
+    def _detach_target(self) -> None:
+        if self._target is None or not shiboken6.isValid(self._target):
+            return
+        self._target.removeEventFilter(self)
+        try:
+            self._target.destroyed.disconnect(self._on_target_destroyed)
+        except RuntimeError:
+            pass
 
     def _on_target_destroyed(self, *_):
         self._target = None

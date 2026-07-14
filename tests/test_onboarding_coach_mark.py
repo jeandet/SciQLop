@@ -106,3 +106,29 @@ def test_target_destroyed_emits_signal_and_hides(qtbot):
         target.deleteLater()
 
     assert not mark.isVisible()
+
+
+def test_stale_target_destroyed_does_not_abort_current_step(qtbot):
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    first_target = QPushButton("first", host)
+    second_target = QPushButton("second", host)
+    host.resize(400, 300)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(first_target, "Title", "Body")
+    mark.show_for(second_target, "Title 2", "Body 2")
+
+    target_destroyed_spy = []
+    mark.target_destroyed.connect(lambda: target_destroyed_spy.append(True))
+
+    first_target.deleteLater()
+    qtbot.wait(50)
+
+    assert target_destroyed_spy == []
+    assert mark._target is second_target
+    assert mark.isVisible()
