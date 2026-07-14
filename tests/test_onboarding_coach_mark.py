@@ -108,6 +108,52 @@ def test_target_destroyed_emits_signal_and_hides(qtbot):
     assert not mark.isVisible()
 
 
+def test_clicking_the_spotlighted_target_reaches_the_target(qtbot):
+    """Real mouse clicks are hit-tested by position (QWidget.childAt), unlike
+    calling .click() directly on the target which bypasses the overlay
+    entirely. The coach mark dims everything except a spotlight cutout
+    around the target -- a click inside that cutout must actually reach the
+    target, not the coach mark sitting on top of it."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    target = QPushButton("target", host)
+    target.setGeometry(100, 100, 40, 20)
+    host.resize(800, 600)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(target, "Title", "Body")
+
+    center = target.mapTo(host, target.rect().center())
+    assert host.childAt(center) is target
+
+
+def test_clicking_outside_the_spotlight_still_hits_the_coach_mark(qtbot):
+    """The dimmed area (outside the spotlight) must still block interaction
+    with whatever's behind it -- only the cutout should pass clicks
+    through."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    target = QPushButton("target", host)
+    target.setGeometry(100, 100, 40, 20)
+    decoy = QPushButton("decoy", host)
+    decoy.setGeometry(400, 400, 40, 20)
+    host.resize(800, 600)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(target, "Title", "Body")
+
+    decoy_center = decoy.mapTo(host, decoy.rect().center())
+    assert host.childAt(decoy_center) is mark
+
+
 def test_stale_target_destroyed_does_not_abort_current_step(qtbot):
     from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 

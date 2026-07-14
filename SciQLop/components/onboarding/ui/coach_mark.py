@@ -1,6 +1,6 @@
 import shiboken6
 from PySide6.QtCore import Qt, QRect, Signal, QEvent
-from PySide6.QtGui import QPainter, QColor, QPainterPath
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 
@@ -114,6 +114,7 @@ class CoachMark(QWidget):
 
     def _reposition_bubble(self) -> None:
         rect = self._target_rect()
+        self._update_mask()
         if rect is None:
             return
         bubble_x = rect.right() + 12
@@ -123,9 +124,11 @@ class CoachMark(QWidget):
         self._bubble.move(bubble_x, bubble_y)
         self._bubble.adjustSize()
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    def _dimmed_path(self) -> QPainterPath:
+        """The region that should actually block mouse input (and get
+        painted dark): everything except the spotlight cutout around the
+        target, so a click inside the cutout reaches the real widget behind
+        it instead of this overlay."""
         path = QPainterPath()
         path.addRect(self.rect())
         rect = self._target_rect()
@@ -133,4 +136,12 @@ class CoachMark(QWidget):
             cutout = QPainterPath()
             cutout.addRoundedRect(rect.adjusted(-4, -4, 4, 4), 6, 6)
             path = path.subtracted(cutout)
-        painter.fillPath(path, QColor(0, 0, 0, 140))
+        return path
+
+    def _update_mask(self) -> None:
+        self.setMask(QRegion(self._dimmed_path().toFillPolygon().toPolygon()))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillPath(self._dimmed_path(), QColor(0, 0, 0, 140))
