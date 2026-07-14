@@ -60,14 +60,16 @@ def test_clicking_add_button_docks_new_panel_as_tab_in_same_area(main_window, qt
         qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
         button = _add_button(area)
         before = area.dockWidgetsCount()
+        before_names = set(main_window.plot_panels())
 
         button.click()
         qtbot.waitUntil(lambda: area.dockWidgetsCount() == before + 1, timeout=1000)
 
-        new_panels = [p for p in main_window.plot_panels() if p is not panel]
-        assert len(new_panels) == 1
-        assert _area_for(main_window, new_panels[0]) is area
-        main_window.remove_panel(new_panels[0])
+        new_names = [n for n in main_window.plot_panels() if n not in before_names]
+        assert len(new_names) == 1
+        new_panel = main_window.plot_panel(new_names[0])
+        assert _area_for(main_window, new_panel) is area
+        main_window.remove_panel(new_panel)
     finally:
         main_window.remove_panel(panel)
 
