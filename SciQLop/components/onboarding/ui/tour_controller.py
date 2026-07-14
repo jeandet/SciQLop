@@ -13,6 +13,19 @@ log = getLogger(__name__)
 _POLL_INTERVAL_S = 0.25
 
 
+def _log_safely(message: str, level: str = "info") -> None:
+    """Logging must never crash the app. The module-level logger's Qt
+    signal can itself already be torn down if this fires from deep inside
+    an interpreter/QApplication shutdown cascade (e.g. a user quits SciQLop
+    while a tour's coach-mark target is being destroyed as part of the same
+    teardown) -- swallow that one, narrow failure mode rather than let a
+    diagnostic log call bring down shutdown."""
+    try:
+        getattr(log, level)(message)
+    except RuntimeError:
+        pass
+
+
 class TourController(QObject):
     """Walks TOUR_STEPS against a live SciQLopMainWindow, one CoachMark at a
     time, advancing on each step's completion signal or on the coach mark's
@@ -59,7 +72,7 @@ class TourController(QObject):
         self._disconnect_active_completion()
         self._finish()
         if message:
-            log.info(message)
+            _log_safely(message)
 
     def _finish(self) -> None:
         """Mark the tour as over and detach the controller from CoachMark's
@@ -132,7 +145,8 @@ class TourController(QObject):
             return
 
         if target is None:
-            log.warning(f"Onboarding step {step.step_id!r}: target not found, aborting tour")
+            _log_safely(f"Onboarding step {step.step_id!r}: target not found, aborting tour",
+                        level="warning")
             self.abort()
             return
 
@@ -218,7 +232,7 @@ class TourController(QObject):
         self.abort()
 
     def _on_target_gone(self) -> None:
-        log.info("Onboarding tour target was destroyed mid-step; aborting")
+        _log_safely("Onboarding tour target was destroyed mid-step; aborting")
         self.abort()
 
     def _advance(self) -> None:
