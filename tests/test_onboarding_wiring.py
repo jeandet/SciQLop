@@ -48,3 +48,17 @@ def test_maybe_run_onboarding_tour_starts_when_not_completed(main_window, qtbot)
     main_window._maybe_run_onboarding_tour(None)
     qtbot.waitUntil(lambda: main_window._onboarding_controller is not None, timeout=1000)
     main_window._onboarding_controller.abort()
+
+
+def test_take_the_tour_quickstart_shortcut_registered(main_window, qapp):
+    assert "Take the tour" in qapp.quickstart_shortcuts
+
+
+def test_take_the_tour_shortcut_starts_tour(main_window, qapp, qtbot):
+    shortcut = qapp.quickstart_shortcut("Take the tour")
+    shortcut["callback"]()
+    qtbot.waitUntil(
+        lambda: main_window._onboarding_controller is not None
+        and main_window._onboarding_controller._coach_mark.isVisible(),
+        timeout=1000)
+    main_window._onboarding_controller.abort()
