@@ -1,5 +1,4 @@
 from .fixtures import *
-import pytest
 
 
 def test_full_tour_completes_through_all_five_steps_or_aborts_cleanly(main_window, qtbot):

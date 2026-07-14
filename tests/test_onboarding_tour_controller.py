@@ -73,8 +73,14 @@ def test_step_3_timeout_aborts_whole_tour(main_window, qtbot, monkeypatch):
         resolve_products_side_tab(main_window).click()
         qtbot.waitUntil(lambda: controller._current_step().step_id == "plot_product", timeout=2000)
 
-        qtbot.waitUntil(lambda: not controller._coach_mark.isVisible(), timeout=3000)
-        assert OnboardingSettings().tour_completed is True
+        # Step 3 polls silently (no coach mark shown) while waiting for its
+        # target to resolve, so `not coach_mark.isVisible()` is already true
+        # the instant polling starts -- it can't distinguish "still polling"
+        # from "tour actually timed out and aborted". Wait on the
+        # `tour_completed` flag itself instead: it's set exactly once, by
+        # `_finish()`, on both the full-completion and the step-3-abort path.
+        qtbot.waitUntil(lambda: OnboardingSettings().tour_completed is True, timeout=3000)
+        assert not controller._coach_mark.isVisible()
     finally:
         for name in main_window.plot_panels():
             main_window.remove_panel(main_window.plot_panel(name))
