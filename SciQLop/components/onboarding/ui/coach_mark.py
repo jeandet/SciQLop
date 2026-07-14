@@ -1,6 +1,6 @@
 import shiboken6
 from PySide6.QtCore import Qt, QRect, Signal, QEvent
-from PySide6.QtGui import QPainter, QColor, QPainterPath, QRegion
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QRegion, QPen
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 
@@ -124,6 +124,12 @@ class CoachMark(QWidget):
         self._bubble.move(bubble_x, bubble_y)
         self._bubble.adjustSize()
 
+    def _cutout_rect(self) -> QRect | None:
+        rect = self._target_rect()
+        if rect is None:
+            return None
+        return rect.adjusted(-4, -4, 4, 4)
+
     def _dimmed_path(self) -> QPainterPath:
         """The region that should actually block mouse input (and get
         painted dark): everything except the spotlight cutout around the
@@ -131,10 +137,10 @@ class CoachMark(QWidget):
         it instead of this overlay."""
         path = QPainterPath()
         path.addRect(self.rect())
-        rect = self._target_rect()
-        if rect is not None:
+        cutout_rect = self._cutout_rect()
+        if cutout_rect is not None:
             cutout = QPainterPath()
-            cutout.addRoundedRect(rect.adjusted(-4, -4, 4, 4), 6, 6)
+            cutout.addRoundedRect(cutout_rect, 6, 6)
             path = path.subtracted(cutout)
         return path
 
@@ -145,3 +151,13 @@ class CoachMark(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillPath(self._dimmed_path(), QColor(0, 0, 0, 140))
+        cutout_rect = self._cutout_rect()
+        if cutout_rect is not None:
+            # The mask (see _update_mask) excludes cutout_rect entirely so
+            # clicks pass through it -- a stroke centered on cutout_rect's
+            # own boundary would have its inner half clipped by that mask.
+            # Draw it 1px further out so the full pen width stays on the
+            # dimmed (visible) side.
+            painter.setPen(QPen(self.palette().highlight().color(), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(cutout_rect.adjusted(-1, -1, 1, 1), 7, 7)
