@@ -12,6 +12,7 @@ def find_index_by_path(model: QAbstractItemModel, path: list[str],
                         parent: QModelIndex | None = None) -> QModelIndex | None:
     if not path:
         return parent
+    parent = parent if parent is not None else QModelIndex()
     row_count = model.rowCount(parent)
     target = path[0].lower()
     for row in range(row_count):
