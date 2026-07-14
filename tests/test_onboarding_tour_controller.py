@@ -98,6 +98,7 @@ def test_replaying_after_completion_does_not_double_fire_on_stale_connections(ma
     first.start()
     qtbot.waitUntil(lambda: resolve_add_panel_button(main_window) is not None, timeout=1000)
     first.abort()
+    assert first.is_finished is True
 
     second = TourController(main_window)
     second.start()
@@ -110,6 +111,30 @@ def test_replaying_after_completion_does_not_double_fire_on_stale_connections(ma
         second.abort()
         for name in main_window.plot_panels():
             main_window.remove_panel(main_window.plot_panel(name))
+
+
+def test_finish_sets_is_finished_and_disposes_coach_mark_and_controller(main_window, qtbot):
+    """Regression guard for the whole-branch-review findings: `_finish()`
+    must both flip a public `is_finished` flag (so mainwindow.py can guard
+    against starting a second tour without reaching into a private
+    attribute) and dispose of the coach mark + itself, or every tour
+    run/replay leaks a hidden CoachMark that keeps intercepting every
+    Resize/Move event on main_window forever."""
+    import shiboken6
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    controller = TourController(main_window)
+    controller.start()
+    qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+
+    coach_mark = controller._coach_mark
+    assert controller.is_finished is False
+
+    controller.abort()
+
+    assert controller.is_finished is True
+    qtbot.waitUntil(lambda: not shiboken6.isValid(coach_mark), timeout=1000)
+    qtbot.waitUntil(lambda: not shiboken6.isValid(controller), timeout=1000)
 
 
 def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resources, qtbot):

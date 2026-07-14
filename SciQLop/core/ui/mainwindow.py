@@ -622,6 +622,9 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self._start_onboarding_tour()
 
     def _start_onboarding_tour(self) -> None:
+        controller = self._onboarding_controller
+        if controller is not None and shiboken6.isValid(controller) and not controller.is_finished:
+            return
         self._onboarding_controller = run_tour(self)
 
     def open_jupyterlab_widget(self):

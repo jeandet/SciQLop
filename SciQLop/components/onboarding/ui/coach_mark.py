@@ -62,6 +62,19 @@ class CoachMark(QWidget):
         self.raise_()
         self.setFocus()
 
+    def dispose(self) -> None:
+        """Detach from both the current target and `main_window` itself.
+
+        Called exactly once, by TourController._finish(), when the owning
+        tour is truly done. CoachMark has no notion of "the tour is over"
+        on its own, so it must not remove its own main_window event filter
+        anywhere else (e.g. its destructor) — only the controller knows
+        when that's safe."""
+        self._detach_target()
+        if shiboken6.isValid(self._main_window):
+            self._main_window.removeEventFilter(self)
+        self.hide()
+
     def _detach_target(self) -> None:
         if self._target is None or not shiboken6.isValid(self._target):
             return

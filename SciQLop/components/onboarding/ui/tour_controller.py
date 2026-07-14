@@ -42,6 +42,10 @@ class TourController(QObject):
         self._active_slot = None
         self._finished = False
 
+    @property
+    def is_finished(self) -> bool:
+        return self._finished
+
     def _current_step(self) -> TourStep:
         return TOUR_STEPS[self._step_index]
 
@@ -72,6 +76,17 @@ class TourController(QObject):
         self._coach_mark.hide()
         with OnboardingSettings() as s:
             s.tour_completed = True
+        self._dispose()
+
+    def _dispose(self) -> None:
+        coach_mark = self._coach_mark
+
+        def _cleanup():
+            coach_mark.dispose()
+            coach_mark.deleteLater()
+            self.deleteLater()
+
+        QTimer.singleShot(0, _cleanup)
 
     def _detach_coach_mark_signals(self) -> None:
         for signal, slot in (

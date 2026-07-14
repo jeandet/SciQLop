@@ -50,6 +50,33 @@ def test_maybe_run_onboarding_tour_starts_when_not_completed(main_window, qtbot)
     main_window._onboarding_controller.abort()
 
 
+def test_starting_tour_twice_in_a_row_does_not_stack_a_second_controller(main_window, qtbot):
+    """Regression guard for the double-tour race: if the auto-launch timer
+    fires while a manually-started tour (or an earlier auto-launch) is
+    already live, `_start_onboarding_tour` must be a no-op rather than
+    replacing `_onboarding_controller` with a second, independent
+    TourController — that would leave two CoachMark overlays stacked, both
+    wired to main_window.panel_added, with the first one orphaned but still
+    alive and listening."""
+    from SciQLop.components.onboarding.backend.settings import OnboardingSettings
+
+    with OnboardingSettings() as s:
+        s.tour_completed = False
+
+    main_window._onboarding_controller = None
+    try:
+        main_window._start_onboarding_tour()
+        first_controller = main_window._onboarding_controller
+
+        main_window._start_onboarding_tour()
+        second_controller = main_window._onboarding_controller
+
+        assert second_controller is first_controller
+    finally:
+        if main_window._onboarding_controller is not None:
+            main_window._onboarding_controller.abort()
+
+
 def test_take_the_tour_quickstart_shortcut_registered(main_window, qapp):
     assert "Take the tour" in qapp.quickstart_shortcuts
 
