@@ -444,11 +444,13 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
             return self.new_native_plot_panel(name=name)
         return None
 
-    def new_native_plot_panel(self, name: Optional[str] = None) -> TimeSyncPanel:
+    def new_native_plot_panel(self, name: Optional[str] = None,
+                              area: Optional[QtAds.CDockAreaWidget] = None) -> TimeSyncPanel:
         panel = TimeSyncPanel(parent=None, name=auto_name(base="Panel", name=name),
                               time_range=self._default_time_range)
         container = PanelContainer(panel)
-        self.addWidgetIntoDock(QtAds.DockWidgetArea.TopDockWidgetArea, container, delete_on_close=True)
+        self.addWidgetIntoDock(QtAds.DockWidgetArea.TopDockWidgetArea, container,
+                               area=area, delete_on_close=True)
         panel.delete_me.connect(lambda: self.remove_panel(panel))
         self.panel_added.emit(panel)
         self._notify_panels_list_changed()
