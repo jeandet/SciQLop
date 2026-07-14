@@ -21,3 +21,100 @@ def test_new_native_plot_panel_docks_into_explicit_area(main_window, qtbot):
             main_window.remove_panel(panel2)
     finally:
         main_window.remove_panel(panel1)
+
+
+def _add_button(area):
+    return area.property("sciqlop_add_panel_button")
+
+
+def test_plot_panel_area_gets_add_button(main_window, qtbot):
+    panel = main_window.new_plot_panel()
+    try:
+        area = _area_for(main_window, panel)
+        qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
+    finally:
+        main_window.remove_panel(panel)
+
+
+def test_second_panel_in_same_area_does_not_duplicate_button(main_window, qtbot):
+    panel1 = main_window.new_plot_panel()
+    try:
+        area = _area_for(main_window, panel1)
+        qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
+        first_button = _add_button(area)
+
+        panel2 = main_window.new_native_plot_panel(area=area)
+        try:
+            qtbot.wait(50)
+            assert _add_button(area) is first_button
+        finally:
+            main_window.remove_panel(panel2)
+    finally:
+        main_window.remove_panel(panel1)
+
+
+def test_clicking_add_button_docks_new_panel_as_tab_in_same_area(main_window, qtbot):
+    panel = main_window.new_plot_panel()
+    try:
+        area = _area_for(main_window, panel)
+        qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
+        button = _add_button(area)
+        before = area.dockWidgetsCount()
+
+        button.click()
+        qtbot.waitUntil(lambda: area.dockWidgetsCount() == before + 1, timeout=1000)
+
+        new_panels = [p for p in main_window.plot_panels() if p is not panel]
+        assert len(new_panels) == 1
+        assert _area_for(main_window, new_panels[0]) is area
+        main_window.remove_panel(new_panels[0])
+    finally:
+        main_window.remove_panel(panel)
+
+
+def test_area_without_plot_panels_gets_no_add_button(main_window, qtbot):
+    from PySide6.QtWidgets import QLabel
+    from SciQLop.core.unique_names import auto_name, release_name
+
+    name = auto_name(base="PlainDockTest")
+    plain = QLabel("plain widget")
+    plain.setWindowTitle(name)
+    dw = QtAds.CDockWidget(name)
+    dw.setWidget(plain)
+    try:
+        area = main_window.dock_manager.addDockWidget(
+            QtAds.DockWidgetArea.BottomDockWidgetArea, dw)
+        qtbot.wait(50)
+        assert _add_button(area) is None
+    finally:
+        dw.closeDockWidget()
+        plain.deleteLater()
+        release_name(name)
+
+
+def test_splitting_a_plot_panel_into_a_new_area_gets_its_own_add_button(main_window, qtbot):
+    from SciQLop.components.plotting.ui.time_sync_panel import TimeSyncPanel
+    from SciQLop.components.plotting.ui.panel_container import PanelContainer
+    from SciQLop.core.unique_names import auto_name, release_name
+
+    panel1 = main_window.new_plot_panel()
+    try:
+        area = _area_for(main_window, panel1)
+        qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
+
+        name2 = auto_name(base="SplitTestPanel")
+        panel2 = TimeSyncPanel(parent=None, name=name2, time_range=main_window.default_range)
+        container2 = PanelContainer(panel2)
+        dw2 = QtAds.CDockWidget(container2.windowTitle())
+        dw2.setWidget(container2)
+        try:
+            new_area = main_window.dock_manager.addDockWidget(
+                QtAds.DockWidgetArea.RightDockWidgetArea, dw2, area)
+            qtbot.waitUntil(lambda: _add_button(new_area) is not None, timeout=1000)
+            assert new_area is not area
+        finally:
+            dw2.closeDockWidget()
+            container2.deleteLater()
+            release_name(name2)
+    finally:
+        main_window.remove_panel(panel1)

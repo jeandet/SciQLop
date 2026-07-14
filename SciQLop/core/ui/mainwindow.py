@@ -134,6 +134,7 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
             QtAds.CDockManager.setConfigFlag(QtAds.CDockManager.FloatingContainerForceQWidgetTitleBar, True)
         self.dock_manager = QtAds.CDockManager(self)
         self.dock_manager.setStyleSheet("")
+        self.dock_manager.dockAreaCreated.connect(self._on_dock_area_created)
 
     def _setup_menus(self):
         self._menubar = QtWidgets.QMenuBar(self)
@@ -476,6 +477,31 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         if container is not None:
             container.deleteLater()
         self._notify_panels_list_changed()
+
+    def _on_dock_area_created(self, area: QtAds.CDockAreaWidget) -> None:
+        # dockAreaCreated fires from inside CDockAreaWidget's constructor,
+        # before the triggering dock widget has been inserted into it —
+        # defer the plot-panel check to the next event-loop turn so
+        # dockWidgets() is populated by the time we look.
+        QtCore.QTimer.singleShot(0, lambda: self._ensure_add_panel_button(area))
+
+    def _ensure_add_panel_button(self, area: QtAds.CDockAreaWidget) -> None:
+        if not shiboken6.isValid(area):
+            return
+        if area.property("sciqlop_add_panel_button") is not None:
+            return
+        if not any(_extract_panel(dw) is not None for dw in area.dockWidgets()):
+            return
+        button = QtWidgets.QToolButton(area)
+        button.setAutoRaise(True)
+        button.setIcon(theme_icon("add_graph"))
+        button.setToolTip(rich_tooltip(
+            "New plot panel",
+            "Add a new plot panel as a tab in this area."))
+        button.clicked.connect(lambda: self.new_native_plot_panel(area=area))
+        title_bar = area.titleBar()
+        title_bar.insertWidget(title_bar.indexOf(title_bar.tabBar()) + 1, button)
+        area.setProperty("sciqlop_add_panel_button", button)
 
     def plot_panels(self) -> List[str]:
         panels = [_extract_panel(dw) for dw in self.dock_manager.dockWidgets()]
