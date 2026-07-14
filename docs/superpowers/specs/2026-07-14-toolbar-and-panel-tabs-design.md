@@ -107,6 +107,23 @@ areas or the welcome page, which is normally replaced/closed once panels
 exist) and is left unhandled; if it becomes a real workflow, add a check in
 `dockWidgetAdded` as a follow-up.
 
+**Addendum (2026-07-14, later same day):** the "only if the area already
+holds a plot panel" gate described above (and the corresponding "welcome
+page never receives an add-button" regression test) was removed the same
+day, per a follow-up request that the "+" be a general "create a plot panel
+here" affordance rather than one gated on existing content — this was most
+visible as the welcome page never getting a "+" until a first plot panel
+had been created elsewhere. `_ensure_add_panel_button` now attaches to
+*every* area that reaches it via `dockAreaCreated`/the direct call, with no
+content check. Side panels (Products/Catalogs/Settings/Properties/Chat)
+remain excluded — not by that check, but structurally: they're added via
+`addAutoHideDockWidget`, which never constructs a `CDockAreaWidget` or fires
+`dockAreaCreated` at all (confirmed by reading `DockManager.cpp`/
+`DockContainerWidget.cpp` in the QtAds source), so they never reach
+`_ensure_add_panel_button` in the first place. See the handover doc's
+"Session 2" section for the real segfault this change surfaced in
+*existing* test teardown code (not new code) and its fix.
+
 ### Entry points for creating a plot panel, after this change
 
 1. **"+" button** on any dock area already holding plot panels — new,

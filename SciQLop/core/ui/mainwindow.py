@@ -497,8 +497,6 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
             return
         if area.property("sciqlop_add_panel_button") is not None:
             return
-        if not any(_extract_panel(dw) is not None for dw in area.dockWidgets()):
-            return
         button = QtWidgets.QToolButton(area)
         button.setAutoRaise(True)
         button.setIcon(theme_icon("add_graph"))

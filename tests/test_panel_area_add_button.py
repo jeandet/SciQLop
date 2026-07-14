@@ -1,5 +1,24 @@
 from .fixtures import *
+import pytest
 import PySide6QtAds as QtAds
+
+
+@pytest.fixture
+def bare_main_window(qapp, sciqlop_resources):
+    """A fresh, per-test main window — the shared session-scoped ``main_window``
+    fixture can't tell us whether the welcome page's area got its button *before*
+    any plot panel was ever created, since earlier tests already left one there."""
+    from SciQLop.core.ui.mainwindow import SciQLopMainWindow
+
+    mw = SciQLopMainWindow()
+    yield mw
+    mw.close()
+
+
+def _welcome_area(main_window):
+    dw = next(dw for dw in main_window.dock_manager.dockWidgets()
+              if dw.widget() is main_window.welcome)
+    return dw.dockAreaWidget()
 
 
 def _area_for(main_window, panel):
@@ -74,7 +93,15 @@ def test_clicking_add_button_docks_new_panel_as_tab_in_same_area(main_window, qt
         main_window.remove_panel(panel)
 
 
-def test_area_without_plot_panels_gets_no_add_button(main_window, qtbot):
+def test_welcome_page_area_gets_add_button_before_any_plot_panel(bare_main_window, qtbot):
+    area = _welcome_area(bare_main_window)
+    qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
+
+
+def test_area_without_plot_panels_still_gets_add_button(main_window, qtbot):
+    """The "+" is a general "create a plot panel here" affordance, not
+    conditional on the area already holding one — see the welcome-page test
+    above for the motivating case."""
     from PySide6.QtWidgets import QLabel
     from SciQLop.core.unique_names import auto_name, release_name
 
@@ -86,9 +113,9 @@ def test_area_without_plot_panels_gets_no_add_button(main_window, qtbot):
     try:
         area = main_window.dock_manager.addDockWidget(
             QtAds.DockWidgetArea.BottomDockWidgetArea, dw)
-        qtbot.wait(50)
-        assert _add_button(area) is None
+        qtbot.waitUntil(lambda: _add_button(area) is not None, timeout=1000)
     finally:
+        dw.takeWidget()
         dw.closeDockWidget()
         plain.deleteLater()
         release_name(name)

@@ -74,3 +74,58 @@ Early in this session I hit the WebEngine-fatal-abort failure mode on the *defau
 
 1. Get a clean confirming pytest run of the split-area test (and ideally the full new-test files) via CI or a calmer host.
 2. Nothing else outstanding for this feature — it's functionally complete and pushed.
+
+## Session 2 (2026-07-14, later same day) — "+" no longer gated on existing plot panels
+
+Follow-up request: the "+" button should be a general "create a plot panel
+here" affordance, not conditional on the area already holding a plot panel —
+concretely, the welcome page's area never got a "+" until a first plot panel
+had been created elsewhere (via the quickstart tile or command palette),
+which the original design (see the spec's "Out of scope" section) had
+called out as an intentional exclusion.
+
+**Fix:** removed the `if not any(_extract_panel(dw) is not None for dw in
+area.dockWidgets()): return` gate from `_ensure_add_panel_button`
+(`SciQLop/core/ui/mainwindow.py`). Side panels (Products/Catalogs/Settings/
+Properties/Chat) are still never affected — not because of that check, but
+structurally: `add_side_pan` uses `CDockManager.addAutoHideDockWidget`,
+which (verified by reading the QtAds C++ source,
+`DockManager.cpp`/`DockContainerWidget.cpp`) never constructs a
+`CDockAreaWidget` and never fires `dockAreaCreated`, so they never reach
+`_ensure_add_panel_button` at all.
+
+**A real (pre-existing) segfault surfaced and got fixed along the way.**
+TDD for the welcome-page case required a fresh, non-session-scoped
+`bare_main_window` fixture (the shared session-scoped `main_window` fixture
+can't show "no button before any panel ever existed" once any earlier test
+has left one on the welcome page's area). After the gate was removed, a
+run of the full `test_panel_area_add_button.py` file segfaulted inside
+`_extract_panel` — but only when `test_area_without_plot_panels_...` (now
+renamed `..._still_gets_add_button`) ran immediately before the split test.
+Root cause: that test's own teardown built a `CDockWidget` by hand and tore
+it down with `dw.closeDockWidget(); plain.deleteLater()` — missing the
+`dw.takeWidget()` step first, the *exact* lifetime bug already fixed for a
+different test's `dw2` in commit `946cf626` (see the "Real bugs found"
+section above and `docs/qt-lifetime-patterns.md`). It was invisible before
+because the old gate meant `_ensure_add_panel_button` early-returned for
+this plain-widget area without ever touching its title bar; once the gate
+was removed the button got attached, its teardown corrupted memory, and the
+*next* test to touch the dock manager (the split test, calling
+`remove_panel`) crashed. Fixed by adding the missing `dw.takeWidget()`
+before `dw.closeDockWidget()`, matching the established pattern.
+
+**Verification:** `uv run pytest --no-xvfb tests/test_panel_area_add_button.py
+tests/test_mainwindow_toolbar.py` — 10/10 passed, exit 0, across 3 of 4
+consecutive runs. One run hit a SIGABRT *after* pytest had already printed
+"10 passed" — a "Failed to restore OpenGL context after clean-up" message
+during interpreter/Qt shutdown, not a `Fatal Python error`/segfault inside
+any test. Didn't reproduce on immediate re-runs; treated as the
+already-known class of headless/software-GL teardown flakiness in this
+container (see [[pitfall-mainwindow-fixture-cold-start-hang]]), not a
+regression from this change — but flagging here rather than silently
+dismissing it, since a segfault-adjacent failure is exactly the kind of
+thing not to wave away without a note.
+
+**Not committed yet as of writing this section** — changes are on top of
+the already-pushed `946cf626`, touching only `SciQLop/core/ui/mainwindow.py`
+and `tests/test_panel_area_add_button.py`.
