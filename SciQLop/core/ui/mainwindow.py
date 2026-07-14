@@ -28,6 +28,8 @@ from SciQLop.components.sciqlop_logging import getLogger
 from SciQLopPlots import SciQLopMultiPlotPanel
 from SciQLop.components.settings.ui import SettingsPanel
 from SciQLop.components.catalogs.ui import CatalogBrowser
+from SciQLop.components.onboarding.backend.settings import OnboardingSettings
+from SciQLop.components.onboarding.ui.tour_controller import run_tour
 
 __here__ = os.path.dirname(__file__)
 
@@ -166,6 +168,13 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self._profiling_menu = ProfilingMenu(self)
         self.toolsMenu.addMenu(self._profiling_menu.menu)
 
+        replay_tour = self.toolsMenu.addAction(
+            "Replay Onboarding Tour", self._replay_onboarding_tour)
+        replay_tour.setToolTip(rich_tooltip(
+            "Replay Onboarding Tour",
+            "Walk through creating a plot panel, finding the Products "
+            "browser, and plotting your first product."))
+
     def _setup_side_panels(self):
         self.productTree = ProductsView(self)
         self.productTree.setWindowTitle("Products")
@@ -183,6 +192,8 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         wm = workspaces_manager_instance()
         wm.push_variables({"main_window": wm.wrap_qt(self)})
         wm.workspace_loaded.connect(lambda w: self.setWindowTitle(f"SciQLop - {w.name}"))
+        self._onboarding_controller = None
+        wm.workspace_loaded.connect(self._maybe_run_onboarding_tour)
         sciqlop_app().add_quickstart_shortcut("JupyterLab", "Open JupyterLab",
                                               Icons.get_icon("Jupyter"),
                                               self.open_jupyterlab_widget)
@@ -598,6 +609,17 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
     def start(self):
         workspaces_manager_instance().start()
+
+    def _maybe_run_onboarding_tour(self, *_args) -> None:
+        if OnboardingSettings().tour_completed:
+            return
+        QtCore.QTimer.singleShot(500, self._start_onboarding_tour)
+
+    def _replay_onboarding_tour(self) -> None:
+        self._start_onboarding_tour()
+
+    def _start_onboarding_tour(self) -> None:
+        self._onboarding_controller = run_tour(self)
 
     def open_jupyterlab_widget(self):
         existing = self.dock_manager.findDockWidget("SciQLop JupyterLab")
