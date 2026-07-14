@@ -40,6 +40,7 @@ class TourController(QObject):
         self._panel_from_step_1 = None
         self._active_signal = None
         self._active_slot = None
+        self._finished = False
 
     def _current_step(self) -> TourStep:
         return TOUR_STEPS[self._step_index]
@@ -51,11 +52,36 @@ class TourController(QObject):
     def abort(self, message: str | None = None) -> None:
         self._stop_polling()
         self._disconnect_active_completion()
+        self._finish()
+        if message:
+            log.info(message)
+
+    def _finish(self) -> None:
+        """Mark the tour as over and detach the controller from CoachMark's
+        own signals — main_window and its child widgets (including this
+        controller's CoachMark) outlive any single tour run, so a finished
+        controller left listening for target_destroyed/skip_requested/
+        dismiss_clicked would still react to unrelated later widget teardown
+        (e.g. main_window.close() destroying whatever this controller's last
+        target happened to be), which is exactly the trap this method closes
+        off. Idempotent: safe to call from multiple exit paths."""
+        if self._finished:
+            return
+        self._finished = True
+        self._detach_coach_mark_signals()
         self._coach_mark.hide()
         with OnboardingSettings() as s:
             s.tour_completed = True
-        if message:
-            log.info(message)
+
+    def _detach_coach_mark_signals(self) -> None:
+        for signal, slot in (
+                (self._coach_mark.skip_requested, self._on_skip),
+                (self._coach_mark.dismiss_clicked, self._on_dismiss),
+                (self._coach_mark.target_destroyed, self._on_target_gone)):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
 
     def _effective_timeout(self, step: TourStep) -> float | None:
         if self._SHORT_TIMEOUT_FOR_TESTS is not None:
@@ -182,8 +208,7 @@ class TourController(QObject):
         self._coach_mark.hide()
         self._step_index += 1
         if self._step_index >= len(TOUR_STEPS):
-            with OnboardingSettings() as s:
-                s.tour_completed = True
+            self._finish()
             return
         self._enter_current_step()
 
