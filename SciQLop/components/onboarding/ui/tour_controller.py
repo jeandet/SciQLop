@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
@@ -82,9 +83,11 @@ class TourController(QObject):
         coach_mark = self._coach_mark
 
         def _cleanup():
-            coach_mark.dispose()
-            coach_mark.deleteLater()
-            self.deleteLater()
+            if shiboken6.isValid(coach_mark):
+                coach_mark.dispose()
+                coach_mark.deleteLater()
+            if shiboken6.isValid(self):
+                self.deleteLater()
 
         QTimer.singleShot(0, _cleanup)
 

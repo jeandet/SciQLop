@@ -137,6 +137,47 @@ def test_finish_sets_is_finished_and_disposes_coach_mark_and_controller(main_win
     qtbot.waitUntil(lambda: not shiboken6.isValid(controller), timeout=1000)
 
 
+def test_deferred_cleanup_tolerates_coach_mark_and_controller_already_destroyed(
+        main_window, qtbot, monkeypatch):
+    """Regression guard for the re-review finding: `_dispose()`'s deferred
+    `_cleanup()` closure must guard `coach_mark`/`self` with
+    `shiboken6.isValid()` before touching them, since both are QObjects
+    parented to main_window and could in principle be torn down (e.g. by
+    main_window itself being destroyed) in the narrow window between
+    `_finish()` returning and the `QTimer.singleShot(0, ...)` callback
+    actually firing. Reproduced deterministically by intercepting
+    `QTimer.singleShot` so the callback is captured but not auto-run, then
+    destroying both objects for real via `deleteLater()` before invoking
+    the captured callback ourselves -- this exercises the exact "objects
+    already gone by the time _cleanup runs" scenario without relying on a
+    real, timing-dependent race."""
+    import shiboken6
+    from SciQLop.components.onboarding.ui import tour_controller as tc_mod
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    captured = {}
+
+    def capture_single_shot(_delay, fn):
+        captured["fn"] = fn
+
+    monkeypatch.setattr(tc_mod.QTimer, "singleShot", capture_single_shot)
+
+    controller = TourController(main_window)
+    controller.start()
+    qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+
+    coach_mark = controller._coach_mark
+    controller.abort()
+    assert "fn" in captured
+
+    coach_mark.deleteLater()
+    controller.deleteLater()
+    qtbot.waitUntil(lambda: not shiboken6.isValid(coach_mark), timeout=1000)
+    qtbot.waitUntil(lambda: not shiboken6.isValid(controller), timeout=1000)
+
+    captured["fn"]()  # must not raise RuntimeError: Internal C++ object already deleted
+
+
 def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resources, qtbot):
     """Regression guard for the design spec's 'any target destroyed mid-tour
     aborts gracefully' requirement: destroying step 2's own target widget
