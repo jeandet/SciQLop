@@ -218,6 +218,8 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self.toolBar = QtWidgets.QToolBar(self)
         self.toolBar.setWindowTitle("Toolbar")
         self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self.toolBar)
+        self.toolBar.setVisible(False)
+        self.viewMenu.addAction(self.toolBar.toggleViewAction())
 
         self.addTSPanel = QtGui.QAction(self)
         self.addTSPanel.setIcon(theme_icon("add_graph"))
