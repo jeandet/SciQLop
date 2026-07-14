@@ -10,7 +10,6 @@ def test_tools_menu_has_replay_onboarding_action(main_window):
 
 def test_replay_action_starts_tour_even_if_already_completed(main_window, qtbot):
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
-    from SciQLop.components.onboarding.backend.targets import resolve_add_panel_button
 
     with OnboardingSettings() as s:
         s.tour_completed = True
