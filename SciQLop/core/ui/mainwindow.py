@@ -452,6 +452,13 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         container = PanelContainer(panel)
         self.addWidgetIntoDock(QtAds.DockWidgetArea.TopDockWidgetArea, container,
                                area=area, delete_on_close=True)
+        dock_widget = self.dock_manager.findDockWidget(panel.name)
+        if dock_widget is not None:
+            # addWidgetIntoDock may have tabbed this panel into an existing
+            # area (e.g. the welcome page's) via _find_biggest_area() rather
+            # than creating a fresh one — dockAreaCreated only fires for the
+            # latter, so that path alone misses this, very common, case.
+            self._ensure_add_panel_button(dock_widget.dockAreaWidget())
         panel.delete_me.connect(lambda: self.remove_panel(panel))
         self.panel_added.emit(panel)
         self._notify_panels_list_changed()

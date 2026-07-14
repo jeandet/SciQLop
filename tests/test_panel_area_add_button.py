@@ -115,6 +115,7 @@ def test_splitting_a_plot_panel_into_a_new_area_gets_its_own_add_button(main_win
             qtbot.waitUntil(lambda: _add_button(new_area) is not None, timeout=1000)
             assert new_area is not area
         finally:
+            dw2.takeWidget()
             dw2.closeDockWidget()
             container2.deleteLater()
             release_name(name2)
