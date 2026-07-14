@@ -22,12 +22,24 @@ screen teaches:
    more directly, via right-click → **"+ New panel"** in the product tree's
    context menu (`components/products/product_context_menu.py:70-79`), which
    creates the panel and plots the product in one action.
+4. That a *second* product dropped onto a panel that already has a graph
+   behaves differently depending on exactly where it lands: dropped in the
+   top/bottom 15% band of an existing graph, `PlaceHolderManager` shows a
+   blue highlight and it becomes a **new stacked subplot**
+   (`SciQLopPlots/include/SciQLopPlots/DragNDrop/PlaceHolderManager.hpp:71-89`,
+   `SciQLopMultiPlotPanel.cpp:544-546`); dropped on the middle 70% of an
+   existing graph, no highlight appears and it **overlays** onto that graph
+   (`SciQLopMultiPlotPanel.cpp:548-551`). The context menu encodes the same
+   choice explicitly instead of by zone: picking an existing plot by name
+   overlays onto it, "+ New plot"/"+ New panel" always creates a new subplot
+   (`product_context_menu.py:52-61`).
 
 This is a pure discoverability gap — every mechanism already exists and
 works; nothing currently points a new user at it. This design adds a
 one-time guided tour (replayable on demand) that walks a first-time user
-through creating a panel, finding the Products browser, and plotting a real
-product, ending with a tip about the one-click shortcut.
+through creating a panel, finding the Products browser, plotting a real
+product, and understanding how to add more products to it, ending with a
+tip about the one-click shortcut.
 
 ## Design
 
@@ -74,19 +86,22 @@ class TourStep:
     on_timeout: Literal["abort", "advance"] = "advance"
 ```
 
-Four steps:
+Five steps:
 
 | # | Target | Copy | Completes when | Timeout behavior |
 |---|--------|------|-----------------|-------------------|
 | 1 | "+" button on the dock area title bar holding the Welcome page | "Click here to create your first plot panel." | A new plot-panel dock widget appears (`sciqlop_plot_panel` property set) | none |
 | 2 | Collapsed Products auto-hide side-tab icon | "Your data lives here — click to open the Products browser." | The Products dock widget becomes visible | none |
 | 3 | First resolvable candidate from a priority list of well-known products (e.g. MMS1 FGM B_GSE, with 1-2 fallbacks) in the product tree | "Drag this onto your empty panel to plot it." | A graph appears in the panel created at step 1 | ~10s bounded poll; on failure, **abort the whole tour** with: "Looks like data providers aren't ready yet — replay this tour anytime from Tools → Replay Onboarding Tour once you're online." |
-| 4 | Products tree generally (no specific node) | "Tip: next time, right-click any product → '+ New panel' to create a panel and plot it in one click." | User clicks "Got it" | none |
+| 4 | The graph created in step 3 | "Adding more data: drop a product in the middle of a graph to overlay it there, or near its top/bottom edge (watch for the blue highlight) to stack it as a new plot in this panel." | User clicks "Got it" | none |
+| 5 | Products tree generally (no specific node) | "Tip: next time, right-click any product → '+ New panel' to create a panel and plot it in one click." | User clicks "Got it" | none |
 
 Steps 1-2 always complete (their targets exist unconditionally). Only step
 3 depends on external state (a data provider populating the tree), so only
 step 3 has an abort path — an offline user still gets the panel-creation and
-Products-discovery lessons before the tour ends early.
+Products-discovery lessons before the tour ends early. Steps 4-5 are
+dismiss-only informational tips anchored on state the tour itself just
+created, with no wait/timeout logic.
 
 **Target resolution for step 3** is a small resolver trying each candidate
 `(mission, dataset, parameter)` path against the live product tree in
@@ -166,3 +181,6 @@ Both manual triggers run regardless of `tour_completed`'s value.
   (regression-guards the `293a7afa`-class segfault pattern).
 - Welcome-page card and Tools-menu entry both invoke `run_tour()` and work
   as replay even when `tour_completed` is already `True`.
+- Step 4's overlay cutout targets the actual graph widget created in step 3
+  (not a stale reference) — resolved fresh at step-4 entry, not cached from
+  step 3.
