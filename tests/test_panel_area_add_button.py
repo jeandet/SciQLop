@@ -1,5 +1,6 @@
 from .fixtures import *
 import pytest
+import shiboken6
 import PySide6QtAds as QtAds
 
 
@@ -119,6 +120,39 @@ def test_area_without_plot_panels_still_gets_add_button(main_window, qtbot):
         dw.closeDockWidget()
         plain.deleteLater()
         release_name(name)
+
+
+def test_add_button_survives_deleting_the_only_panel_in_its_area(main_window, qtbot):
+    """Reproduces a real crash: delete the only panel in an area (emptying
+    it), then click a still-visible "+" button to create a new one.
+
+    QtAds does not destroy the emptied CDockAreaWidget through a path that
+    emits `destroyed` as PySide6 observes it, and its own
+    CDockAreaTitleBar.dockAreaWidget() backref goes stale across the
+    resulting area merge/reflow -- but the button itself survives
+    (reparented into a different, still-valid area's title bar) and stays
+    clickable. A button whose click handler captured the *original* area
+    object by closure fires with a deleted C++ CDockAreaWidget and crashes
+    with `RuntimeError: libshiboken: Internal C++ object ... already
+    deleted` inside addDockWidgetTabToArea."""
+    panel1 = main_window.new_plot_panel()
+    area1 = _area_for(main_window, panel1)
+    qtbot.waitUntil(lambda: _add_button(area1) is not None, timeout=1000)
+    button = _add_button(area1)
+
+    main_window.remove_panel(panel1)
+    qtbot.wait(200)
+
+    assert not shiboken6.isValid(area1), "test assumption: the area is actually gone"
+    assert shiboken6.isValid(button), "test assumption: the button survives its area's death"
+
+    before_names = set(main_window.plot_panels())
+    button.click()
+    qtbot.wait(200)
+
+    new_names = [n for n in main_window.plot_panels() if n not in before_names]
+    assert len(new_names) == 1
+    main_window.remove_panel(main_window.plot_panel(new_names[0]))
 
 
 def test_splitting_a_plot_panel_into_a_new_area_gets_its_own_add_button(main_window, qtbot):

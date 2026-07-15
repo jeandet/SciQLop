@@ -519,10 +519,25 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         button.setToolTip(rich_tooltip(
             "New plot panel",
             "Add a new plot panel as a tab in this area."))
-        button.clicked.connect(lambda: self.new_native_plot_panel(area=area))
+        # Resolve the area from the button's live Qt parent chain at click
+        # time, not by capturing `area` here: when the last panel in an
+        # area is removed, QtAds reparents this button's title bar into a
+        # different (or newly merged) area without emitting `destroyed` on
+        # the old one and without updating its own
+        # CDockAreaTitleBar.dockAreaWidget() backref -- both stay stale
+        # indefinitely. The button survives and stays clickable, so a
+        # captured `area` closure fires with an already-deleted C++
+        # object. The real widget-tree parent, unlike QtAds's own backref,
+        # is kept correct across the reparent.
+        button.clicked.connect(lambda: self._add_panel_in_button_area(button))
         title_bar = area.titleBar()
         title_bar.insertWidget(title_bar.indexOf(title_bar.tabBar()) + 1, button)
         area.setProperty("sciqlop_add_panel_button", button)
+
+    def _add_panel_in_button_area(self, button: QtWidgets.QToolButton) -> None:
+        area = button.parentWidget().parentWidget()
+        if shiboken6.isValid(area):
+            self.new_native_plot_panel(area=area)
 
     def plot_panels(self) -> List[str]:
         panels = [_extract_panel(dw) for dw in self.dock_manager.dockWidgets()]
