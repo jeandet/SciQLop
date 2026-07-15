@@ -142,6 +142,7 @@ def test_later_step_resolver_reads_earlier_step_context(main_window, qtbot):
 
 
 def test_poll_step_times_out_and_aborts_with_message(main_window, qtbot):
+    import shiboken6
     from SciQLop.components.onboarding.ui.tour_controller import TourController
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 
@@ -156,7 +157,12 @@ def test_poll_step_times_out_and_aborts_with_message(main_window, qtbot):
     controller._SHORT_TIMEOUT_FOR_TESTS = 0.2
     controller.start()
     qtbot.waitUntil(lambda: OnboardingSettings().completed_tours.get("t7") is True, timeout=2000)
-    assert not controller._coach_mark.isVisible()
+    # qtbot.waitUntil pumps the event loop, which may already have run the
+    # deferred cleanup (_dispose()'s QTimer.singleShot(0, ...)) that deletes
+    # the coach mark's C++ object -- isVisible() on an already-deleted
+    # Shiboken object raises, so "not visible" must also accept "gone".
+    coach_mark = controller._coach_mark
+    assert not shiboken6.isValid(coach_mark) or not coach_mark.isVisible()
 
 
 def test_skip_sets_completed_and_hides_overlay(main_window, qtbot):
@@ -265,6 +271,7 @@ def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resou
     """Uses a disposable, per-test main window (not the shared session-scoped
     `main_window` fixture) because this test destroys a widget that fixture
     is expected to keep alive for every other test in the suite."""
+    import shiboken6
     from SciQLop.core.ui.mainwindow import SciQLopMainWindow
     from SciQLop.components.onboarding.ui.tour_controller import TourController
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
@@ -283,7 +290,10 @@ def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resou
 
         target.deleteLater()
         qtbot.waitUntil(lambda: OnboardingSettings().completed_tours.get("t12") is True, timeout=2000)
-        assert not controller._coach_mark.isVisible()
+        # Same event-loop-pumped-past-deferred-cleanup race as
+        # test_poll_step_times_out_and_aborts_with_message -- see comment there.
+        coach_mark = controller._coach_mark
+        assert not shiboken6.isValid(coach_mark) or not coach_mark.isVisible()
     finally:
         mw.close()
 
