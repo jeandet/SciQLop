@@ -1,6 +1,8 @@
 from SciQLop.components.onboarding.backend.tour import Tour, TourStep
 from SciQLop.components.onboarding.backend.registry import register_tour
 from SciQLop.components.onboarding.backend import targets, completions
+from SciQLop.components.onboarding.backend.tour_catalogs import CATALOGS_STEPS
+from SciQLop.components.onboarding.backend.tour_settings import SETTINGS_STEPS
 
 _OFFLINE_MESSAGE = (
     "Looks like data providers aren't ready yet — replay this tour anytime "
@@ -10,7 +12,10 @@ _OFFLINE_MESSAGE = (
 GETTING_STARTED = Tour(
     id="getting_started",
     title="Getting Started",
-    description="Create your first plot panel and plot a real product.",
+    description=(
+        "Create your first plot panel, plot a real product, browse "
+        "catalogs, and find your way around Settings."
+    ),
     steps=[
         TourStep(
             step_id="create_panel",
@@ -55,6 +60,8 @@ GETTING_STARTED = Tour(
             ),
             resolver=targets.resolve_products_tree_widget,
         ),
+        *CATALOGS_STEPS,
+        *SETTINGS_STEPS,
     ],
 )
 
