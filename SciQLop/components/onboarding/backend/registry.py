@@ -23,7 +23,9 @@ def register_builtin_tours() -> None:
     """Import every built-in tour module -- each registers itself as a
     module-level side effect. Safe to call more than once: Python only
     executes a module body on its first import."""
-    from SciQLop.components.onboarding.backend import tour_getting_started  # noqa: F401
+    from SciQLop.components.onboarding.backend import (  # noqa: F401
+        tour_getting_started, tour_catalogs, tour_settings,
+    )
 
 
 def _forget_tour_for_tests(tour_id: str) -> None:
