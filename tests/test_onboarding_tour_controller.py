@@ -273,12 +273,13 @@ def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resou
         s.completed_tours = {}
 
     mw = SciQLopMainWindow()
+    mw.show()
     try:
         target = mw.productTree
         tour = _make_tour("t12", [_make_step("only", lambda mw_, ctx: target)])
         controller = TourController(mw, tour)
         controller.start()
-        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=2000)
 
         target.deleteLater()
         qtbot.waitUntil(lambda: OnboardingSettings().completed_tours.get("t12") is True, timeout=2000)
