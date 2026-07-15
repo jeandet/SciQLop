@@ -1,10 +1,6 @@
 from SciQLop.components.onboarding.backend.tour import TourStep
 from SciQLop.components.onboarding.backend import targets, completions
 
-_NO_CATALOG_MESSAGE = (
-    "Create or select a catalog to see event controls — replay this tour "
-    "anytime from Tools → Take a Tour."
-)
 _NO_PANEL_MESSAGE = (
     "Plot something first to see how overlaying catalogs works — replay "
     "this tour anytime from Tools → Take a Tour."
@@ -29,9 +25,6 @@ CATALOGS_STEPS: list[TourStep] = [
         title="Label a time interval",
         body="Select a catalog, then click 'Add Event' to label a time interval.",
         resolver=targets.resolve_add_event_button,
-        poll=True,
-        timeout_s=15.0,
-        timeout_message=_NO_CATALOG_MESSAGE,
     ),
     TourStep(
         step_id="overlay_catalog",

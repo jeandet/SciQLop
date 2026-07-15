@@ -5,15 +5,15 @@ def test_catalogs_has_four_steps_in_order():
     ]
 
 
-def test_add_event_and_overlay_steps_poll_with_timeout():
+def test_overlay_catalog_polls_with_timeout():
     from SciQLop.components.onboarding.backend.tour_catalogs import CATALOGS_STEPS
     by_id = {s.step_id: s for s in CATALOGS_STEPS}
-    for step_id in ("add_event", "overlay_catalog"):
-        assert by_id[step_id].poll is True
-        assert by_id[step_id].timeout_s is not None
-        assert by_id[step_id].timeout_message is not None
-    for step_id in ("open_catalogs", "create_catalog"):
+    assert by_id["overlay_catalog"].poll is True
+    assert by_id["overlay_catalog"].timeout_s is not None
+    assert by_id["overlay_catalog"].timeout_message is not None
+    for step_id in ("open_catalogs", "create_catalog", "add_event"):
         assert by_id[step_id].poll is False
+        assert by_id[step_id].timeout_s is None
 
 
 def test_only_open_catalogs_step_has_completion():

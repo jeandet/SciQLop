@@ -11,7 +11,7 @@ def test_getting_started_has_eleven_steps_in_order():
 def test_polling_steps_have_timeouts():
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}
-    polling_steps = {"plot_product", "add_event", "overlay_catalog"}
+    polling_steps = {"plot_product", "overlay_catalog"}
     for step_id, step in by_id.items():
         if step_id in polling_steps:
             assert step.poll is True
