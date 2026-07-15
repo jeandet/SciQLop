@@ -60,6 +60,14 @@ def test_register_tour_rejects_empty_steps():
         registry.register_tour(_make_tour(steps=[]))
 
 
+def test_register_tour_rejects_duplicate_step_id():
+    from SciQLop.components.onboarding.backend import registry
+    with pytest.raises(ValueError, match="duplicate step_id"):
+        registry.register_tour(_make_tour(steps=[
+            _make_step("dup"), _make_step("dup"),
+        ]))
+
+
 def test_all_tours_reflects_registrations():
     from SciQLop.components.onboarding.backend import registry
     before = {t.id for t in registry.all_tours()}

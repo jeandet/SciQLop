@@ -9,4 +9,4 @@ class OnboardingSettings(ConfigEntry):
     category: ClassVar[str] = SettingsCategory.APPLICATION
     subcategory: ClassVar[str] = "Onboarding"
 
-    completed_tours: Dict[str, bool] = Field(default={})
+    completed_tours: Dict[str, bool] = Field(default_factory=dict)

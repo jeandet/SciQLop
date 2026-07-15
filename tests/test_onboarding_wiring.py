@@ -65,6 +65,19 @@ def test_take_a_tour_action_opens_the_picker(main_window):
     main_window._tour_picker.close()
 
 
+def test_opening_the_picker_twice_closes_the_first_one(main_window):
+    main_window._open_tour_picker()
+    first_picker = main_window._tour_picker
+
+    main_window._open_tour_picker()
+    second_picker = main_window._tour_picker
+
+    assert second_picker is not first_picker
+    assert second_picker.isVisible()
+    assert not first_picker.isVisible()
+    second_picker.close()
+
+
 def test_take_a_tour_quickstart_shortcut_registered(main_window, qapp):
     assert "Take a Tour" in qapp.quickstart_shortcuts
 

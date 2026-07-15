@@ -8,6 +8,9 @@ def register_tour(tour: Tour) -> None:
         raise ValueError(f"Tour {tour.id!r} is already registered")
     if not tour.steps:
         raise ValueError(f"Tour {tour.id!r} has no steps")
+    step_ids = [step.step_id for step in tour.steps]
+    if len(step_ids) != len(set(step_ids)):
+        raise ValueError(f"Tour {tour.id!r} has duplicate step_id values: {step_ids}")
     _registry[tour.id] = tour
 
 

@@ -194,6 +194,7 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         from SciQLop.components.onboarding.backend.registry import register_builtin_tours
         register_builtin_tours()
         self._onboarding_controller = None
+        self._tour_picker = None
         wm.workspace_loaded.connect(self._maybe_run_onboarding_tour)
         sciqlop_app().add_quickstart_shortcut("JupyterLab", "Open JupyterLab",
                                               Icons.get_icon("Jupyter"),
@@ -621,7 +622,11 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
 
     def _open_tour_picker(self) -> None:
         from SciQLop.components.onboarding.ui.tour_picker import TourPicker
+        picker = self._tour_picker
+        if picker is not None and shiboken6.isValid(picker):
+            picker.close()
         self._tour_picker = TourPicker(self)
+        self._tour_picker.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
         self._tour_picker.show()
 
     def _start_tour(self, tour_id: str) -> None:
