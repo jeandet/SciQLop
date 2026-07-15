@@ -24,7 +24,7 @@ CATALOGS_STEPS: list[TourStep] = [
         step_id="add_event",
         title="Label a time interval",
         body="Select a catalog, then click 'Add Event' to label a time interval.",
-        resolver=targets.resolve_add_event_button,
+        resolver=targets.resolve_catalog_tree,
     ),
     TourStep(
         step_id="overlay_catalog",

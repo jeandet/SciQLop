@@ -22,3 +22,11 @@ def test_only_open_catalogs_step_has_completion():
     assert by_id["open_catalogs"].completion is not None
     for step_id in ("create_catalog", "add_event", "overlay_catalog"):
         assert by_id[step_id].completion is None
+
+
+def test_add_event_resolver_is_unconditional_like_create_catalog():
+    from SciQLop.components.onboarding.backend.tour_catalogs import CATALOGS_STEPS
+    from SciQLop.components.onboarding.backend import targets
+    by_id = {s.step_id: s for s in CATALOGS_STEPS}
+    assert by_id["add_event"].resolver is targets.resolve_catalog_tree
+    assert by_id["add_event"].resolver is by_id["create_catalog"].resolver
