@@ -1,36 +1,17 @@
-# tests/test_onboarding_wiring.py
 from .fixtures import *
 import pytest
 
 
-def test_tools_menu_has_replay_onboarding_action(main_window):
+def test_tools_menu_has_take_a_tour_action(main_window):
     actions = [a.text() for a in main_window.toolsMenu.actions()]
-    assert "Replay Onboarding Tour" in actions
+    assert "Take a Tour…" in actions
 
 
-def test_replay_action_starts_tour_even_if_already_completed(main_window, qtbot):
+def test_maybe_run_onboarding_tour_skips_when_getting_started_completed(main_window, qtbot):
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 
     with OnboardingSettings() as s:
-        s.tour_completed = True
-
-    replay_action = next(
-        a for a in main_window.toolsMenu.actions()
-        if a.text() == "Replay Onboarding Tour")
-    replay_action.trigger()
-
-    qtbot.waitUntil(
-        lambda: main_window._onboarding_controller is not None
-        and main_window._onboarding_controller._coach_mark.isVisible(),
-        timeout=1000)
-    main_window._onboarding_controller.abort()
-
-
-def test_maybe_run_onboarding_tour_skips_when_already_completed(main_window, qtbot):
-    from SciQLop.components.onboarding.backend.settings import OnboardingSettings
-
-    with OnboardingSettings() as s:
-        s.tour_completed = True
+        s.completed_tours = {"getting_started": True}
 
     main_window._onboarding_controller = None
     main_window._maybe_run_onboarding_tour(None)
@@ -42,33 +23,27 @@ def test_maybe_run_onboarding_tour_starts_when_not_completed(main_window, qtbot)
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 
     with OnboardingSettings() as s:
-        s.tour_completed = False
+        s.completed_tours = {}
 
     main_window._onboarding_controller = None
     main_window._maybe_run_onboarding_tour(None)
     qtbot.waitUntil(lambda: main_window._onboarding_controller is not None, timeout=1000)
+    assert main_window._onboarding_controller._tour.id == "getting_started"
     main_window._onboarding_controller.abort()
 
 
 def test_starting_tour_twice_in_a_row_does_not_stack_a_second_controller(main_window, qtbot):
-    """Regression guard for the double-tour race: if the auto-launch timer
-    fires while a manually-started tour (or an earlier auto-launch) is
-    already live, `_start_onboarding_tour` must be a no-op rather than
-    replacing `_onboarding_controller` with a second, independent
-    TourController — that would leave two CoachMark overlays stacked, both
-    wired to main_window.panel_added, with the first one orphaned but still
-    alive and listening."""
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 
     with OnboardingSettings() as s:
-        s.tour_completed = False
+        s.completed_tours = {}
 
     main_window._onboarding_controller = None
     try:
-        main_window._start_onboarding_tour()
+        main_window._start_tour("getting_started")
         first_controller = main_window._onboarding_controller
 
-        main_window._start_onboarding_tour()
+        main_window._start_tour("getting_started")
         second_controller = main_window._onboarding_controller
 
         assert second_controller is first_controller
@@ -77,15 +52,7 @@ def test_starting_tour_twice_in_a_row_does_not_stack_a_second_controller(main_wi
             main_window._onboarding_controller.abort()
 
 
-def test_take_the_tour_quickstart_shortcut_registered(main_window, qapp):
-    assert "Take the tour" in qapp.quickstart_shortcuts
-
-
-def test_take_the_tour_shortcut_starts_tour(main_window, qapp, qtbot):
-    shortcut = qapp.quickstart_shortcut("Take the tour")
-    shortcut["callback"]()
-    qtbot.waitUntil(
-        lambda: main_window._onboarding_controller is not None
-        and main_window._onboarding_controller._coach_mark.isVisible(),
-        timeout=1000)
-    main_window._onboarding_controller.abort()
+def test_start_tour_with_unknown_id_does_not_crash(main_window):
+    main_window._onboarding_controller = None
+    main_window._start_tour("no_such_tour")
+    assert main_window._onboarding_controller is None

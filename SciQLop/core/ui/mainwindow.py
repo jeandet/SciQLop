@@ -168,12 +168,11 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         self._profiling_menu = ProfilingMenu(self)
         self.toolsMenu.addMenu(self._profiling_menu.menu)
 
-        replay_tour = self.toolsMenu.addAction(
-            "Replay Onboarding Tour", self._replay_onboarding_tour)
-        replay_tour.setToolTip(rich_tooltip(
-            "Replay Onboarding Tour",
-            "Walk through creating a plot panel, finding the Products "
-            "browser, and plotting your first product."))
+        take_a_tour = self.toolsMenu.addAction(
+            "Take a Tour…", self._open_tour_picker)
+        take_a_tour.setToolTip(rich_tooltip(
+            "Take a Tour",
+            "Pick a guided walkthrough of a SciQLop feature."))
 
     def _setup_side_panels(self):
         self.productTree = ProductsView(self)
@@ -192,6 +191,8 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         wm = workspaces_manager_instance()
         wm.push_variables({"main_window": wm.wrap_qt(self)})
         wm.workspace_loaded.connect(lambda w: self.setWindowTitle(f"SciQLop - {w.name}"))
+        from SciQLop.components.onboarding.backend.registry import register_builtin_tours
+        register_builtin_tours()
         self._onboarding_controller = None
         wm.workspace_loaded.connect(self._maybe_run_onboarding_tour)
         sciqlop_app().add_quickstart_shortcut("JupyterLab", "Open JupyterLab",
@@ -244,8 +245,8 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         sciqlop_app().add_quickstart_shortcut(name="Plot panel", description="Add a new plot panel",
                                               icon=theme_icon("add_graph"), callback=self.new_plot_panel)
         sciqlop_app().add_quickstart_shortcut(
-            name="Take the tour", description="Learn how to create your first plot",
-            icon=theme_icon("assistant"), callback=self._start_onboarding_tour)
+            name="Take a Tour", description="Pick a guided walkthrough of a SciQLop feature",
+            icon=theme_icon("assistant"), callback=self._open_tour_picker)
 
     def _setup_status_bar(self):
         self._statusbar = QtWidgets.QStatusBar(self)
@@ -614,18 +615,20 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         workspaces_manager_instance().start()
 
     def _maybe_run_onboarding_tour(self, *_args) -> None:
-        if OnboardingSettings().tour_completed:
+        if OnboardingSettings().completed_tours.get("getting_started", False):
             return
-        QtCore.QTimer.singleShot(500, self._start_onboarding_tour)
+        QtCore.QTimer.singleShot(500, lambda: self._start_tour("getting_started"))
 
-    def _replay_onboarding_tour(self) -> None:
-        self._start_onboarding_tour()
+    def _open_tour_picker(self) -> None:
+        from SciQLop.components.onboarding.ui.tour_picker import TourPicker
+        self._tour_picker = TourPicker(self)
+        self._tour_picker.show()
 
-    def _start_onboarding_tour(self) -> None:
+    def _start_tour(self, tour_id: str) -> None:
         controller = self._onboarding_controller
         if controller is not None and shiboken6.isValid(controller) and not controller.is_finished:
             return
-        self._onboarding_controller = run_tour(self)
+        self._onboarding_controller = run_tour(self, tour_id)
 
     def open_jupyterlab_widget(self):
         existing = self.dock_manager.findDockWidget("SciQLop JupyterLab")
