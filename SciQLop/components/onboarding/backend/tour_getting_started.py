@@ -40,6 +40,7 @@ GETTING_STARTED = Tour(
             completion=completions.plot_added_to("create_panel"),
             timeout_s=10.0,
             timeout_message=_OFFLINE_MESSAGE,
+            block_input=False,
         ),
         TourStep(
             step_id="overlay_vs_new_subplot",

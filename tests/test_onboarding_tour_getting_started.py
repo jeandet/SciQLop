@@ -22,6 +22,20 @@ def test_polling_steps_have_timeouts():
             assert step.timeout_s is None
 
 
+def test_only_plot_product_step_opts_out_of_blocking_input():
+    """plot_product's completion needs a real drag from the highlighted
+    product row to wherever the user's empty panel actually is -- the
+    coach mark must not block input outside its own cutout for this step,
+    or the drop can never land. Every other step keeps the default
+    (block input outside the cutout)."""
+    from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
+    by_id = {s.step_id: s for s in GETTING_STARTED.steps}
+    assert by_id["plot_product"].block_input is False
+    for step_id, step in by_id.items():
+        if step_id != "plot_product":
+            assert step.block_input is True
+
+
 def test_tip_only_steps_have_no_completion():
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}

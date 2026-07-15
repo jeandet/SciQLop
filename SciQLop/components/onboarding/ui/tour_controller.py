@@ -199,7 +199,8 @@ class TourController(QObject):
 
         show_dismiss = step.completion is None
         self._coach_mark.show_for(widget, step.title, step.body,
-                                  rect=local_rect, show_dismiss=show_dismiss)
+                                  rect=local_rect, show_dismiss=show_dismiss,
+                                  block_input=step.block_input)
 
         self._disconnect_active_completion()
         raw = step.completion(self._main_window, self._context) if step.completion else None

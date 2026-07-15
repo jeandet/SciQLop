@@ -15,6 +15,7 @@ class TourStep:
     poll: bool = False
     timeout_s: float | None = None
     timeout_message: str | None = None
+    block_input: bool = True
 
 
 @dataclass(frozen=True)

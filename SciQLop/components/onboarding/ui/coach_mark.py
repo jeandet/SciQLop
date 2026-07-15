@@ -47,7 +47,8 @@ class CoachMark(QWidget):
         self.hide()
 
     def show_for(self, target: QWidget, title: str, body: str, *,
-                 rect: QRect | None = None, show_dismiss: bool = True) -> None:
+                 rect: QRect | None = None, show_dismiss: bool = True,
+                 block_input: bool = True) -> None:
         self._detach_target()
         self._target = target
         self._target_local_rect = rect
@@ -56,6 +57,14 @@ class CoachMark(QWidget):
         self._title_label.setText(title)
         self._body_label.setText(body)
         self._dismiss_button.setVisible(show_dismiss)
+        # A step whose completion needs a cross-widget drag (pick up the
+        # spotlighted target, drop it elsewhere) can't be satisfied by the
+        # cutout alone -- the drop point stays covered by this overlay
+        # otherwise. WA_TransparentForMouseEvents also affects this widget's
+        # children (the info bubble), so a step opting out of blocking loses
+        # its mouse-clickable Skip/Got it buttons for as long as it's shown;
+        # Escape still works (keyPressEvent isn't mouse input).
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not block_input)
         self.setGeometry(self._main_window.rect())
         self._reposition_bubble()
         self.show()

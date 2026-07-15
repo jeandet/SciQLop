@@ -224,6 +224,34 @@ def test_clicking_outside_the_spotlight_still_hits_the_coach_mark(qtbot):
     assert host.childAt(decoy_center) is mark
 
 
+def test_block_input_false_lets_input_reach_widgets_outside_the_cutout(qtbot):
+    """A step whose completion requires a cross-widget drag (pick up the
+    spotlighted target, drop it somewhere else in the window) needs the
+    coach mark out of the way everywhere, not just inside its cutout --
+    otherwise the drop point, wherever it is, stays covered by the coach
+    mark and the drag can never complete. block_input=False must let
+    childAt() -- the same hit-testing Qt's own drag-and-drop target
+    resolution uses -- resolve past the coach mark anywhere in the
+    window, not just the cutout."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    target = QPushButton("target", host)
+    target.setGeometry(100, 100, 40, 20)
+    drop_target = QPushButton("drop target", host)
+    drop_target.setGeometry(400, 400, 40, 20)
+    host.resize(800, 600)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(target, "Title", "Body", block_input=False)
+
+    drop_target_center = drop_target.mapTo(host, drop_target.rect().center())
+    assert host.childAt(drop_target_center) is drop_target
+
+
 def test_stale_target_destroyed_does_not_abort_current_step(qtbot):
     from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 
