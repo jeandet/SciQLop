@@ -10,7 +10,7 @@ def test_picker_lists_all_registered_tours(main_window):
     try:
         registered_ids = {tour.id for tour in all_tours()}
         assert set(picker._items_by_tour_id.keys()) == registered_ids
-        assert {"getting_started", "catalogs", "settings"} <= registered_ids
+        assert registered_ids == {"getting_started"}
     finally:
         picker.close()
 
@@ -25,7 +25,6 @@ def test_picker_marks_completed_tours(main_window):
     picker = TourPicker(main_window)
     try:
         assert "Completed" in picker._items_by_tour_id["getting_started"].text()
-        assert "Completed" not in picker._items_by_tour_id["catalogs"].text()
     finally:
         picker.close()
         with OnboardingSettings() as s:
@@ -41,13 +40,13 @@ def test_start_selected_starts_the_selected_tour(main_window, qtbot):
     main_window._onboarding_controller = None
 
     picker = TourPicker(main_window)
-    picker._list.setCurrentItem(picker._items_by_tour_id["settings"])
+    picker._list.setCurrentItem(picker._items_by_tour_id["getting_started"])
     picker._start_selected()
 
     try:
         qtbot.waitUntil(
             lambda: main_window._onboarding_controller is not None
-            and main_window._onboarding_controller._tour.id == "settings",
+            and main_window._onboarding_controller._tour.id == "getting_started",
             timeout=1000)
     finally:
         main_window._onboarding_controller.abort()
