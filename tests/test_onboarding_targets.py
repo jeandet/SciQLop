@@ -98,3 +98,51 @@ def test_side_tab_resolver_returns_products_side_tab(main_window):
     from SciQLop.components.onboarding.backend.targets import side_tab_resolver
     dw = main_window.dock_manager.findDockWidget("Products")
     assert side_tab_resolver("Products")(main_window, {}) is dw.sideTabWidget()
+
+
+def test_resolve_catalog_tree_finds_a_tree_view(main_window):
+    from SciQLop.components.onboarding.backend.targets import resolve_catalog_tree
+    from PySide6.QtWidgets import QTreeView
+    result = resolve_catalog_tree(main_window, {})
+    assert isinstance(result, QTreeView)
+
+
+def test_resolve_add_event_button_matches_visibility_state(main_window):
+    """Doesn't assert a specific None/not-None outcome: main_window is a
+    session-scoped fixture shared with unrelated test files, so whether a
+    catalog happens to be selected elsewhere in the session isn't this
+    test's business. What must always hold is the function's own contract:
+    it never returns a hidden button."""
+    from SciQLop.components.onboarding.backend.targets import resolve_add_event_button
+    result = resolve_add_event_button(main_window, {})
+    if result is not None:
+        assert result.isVisible()
+
+
+def test_resolve_any_plot_with_data_returns_none_when_no_plots():
+    from SciQLop.components.onboarding.backend.targets import resolve_any_plot_with_data
+    from unittest.mock import MagicMock
+
+    fake_main_window = MagicMock()
+    fake_main_window.plot_panels.return_value = []
+    assert resolve_any_plot_with_data(fake_main_window, {}) is None
+
+
+def test_resolve_any_plot_with_data_returns_last_plot_of_a_panel_with_plots():
+    from SciQLop.components.onboarding.backend.targets import resolve_any_plot_with_data
+    from unittest.mock import MagicMock
+
+    fake_widget = object()
+    fake_panel = MagicMock()
+    fake_panel.plots.return_value = [fake_widget]
+    fake_main_window = MagicMock()
+    fake_main_window.plot_panels.return_value = ["panel1"]
+    fake_main_window.plot_panel.return_value = fake_panel
+    assert resolve_any_plot_with_data(fake_main_window, {}) is fake_widget
+
+
+def test_resolve_settings_category_list_finds_a_list_view(main_window):
+    from SciQLop.components.onboarding.backend.targets import resolve_settings_category_list
+    from PySide6.QtWidgets import QListView
+    result = resolve_settings_category_list(main_window, {})
+    assert isinstance(result, QListView)

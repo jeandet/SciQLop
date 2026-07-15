@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QAbstractItemModel, QModelIndex
-from PySide6.QtWidgets import QTreeView, QWidget
+from PySide6.QtWidgets import QTreeView, QWidget, QPushButton, QListView
 
 CANDIDATE_PRODUCT_PATHS: list[list[str]] = [
     ["cda", "MMS", "MMS1", "FGM", "mms1_fgm_b_gse_srvy_l2"],
@@ -87,3 +87,31 @@ def resolve_latest_plot_widget(main_window, context) -> QWidget | None:
 
 def resolve_products_tree_widget(main_window, context) -> QWidget | None:
     return _products_tree_view(main_window)
+
+
+def resolve_catalog_tree(main_window, context) -> QTreeView | None:
+    trees = main_window.catalogs_browser.findChildren(QTreeView)
+    return trees[0] if trees else None
+
+
+def resolve_add_event_button(main_window, context) -> QWidget | None:
+    for button in main_window.catalogs_browser.findChildren(QPushButton):
+        if button.text() == "Add Event" and button.isVisible():
+            return button
+    return None
+
+
+def resolve_any_plot_with_data(main_window, context) -> QWidget | None:
+    for name in main_window.plot_panels():
+        panel = main_window.plot_panel(name)
+        if panel is None:
+            continue
+        plots = panel.plots()
+        if plots:
+            return plots[-1]
+    return None
+
+
+def resolve_settings_category_list(main_window, context) -> QListView | None:
+    views = main_window.settings_panel.findChildren(QListView)
+    return views[0] if views else None
