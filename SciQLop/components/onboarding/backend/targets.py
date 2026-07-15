@@ -2,9 +2,7 @@ from PySide6.QtCore import Qt, QAbstractItemModel, QModelIndex
 from PySide6.QtWidgets import QTreeView, QWidget, QPushButton, QListView
 
 CANDIDATE_PRODUCT_PATHS: list[list[str]] = [
-    ["cda", "MMS", "MMS1", "FGM", "mms1_fgm_b_gse_srvy_l2"],
-    ["cda", "THEMIS", "THA", "FGM", "tha_fgs_gse"],
-    ["amda", "Parameters", "Clusters", "Cluster1", "Ephemeris", "c1_xyz_gse"],
+    ["speasy", "amda", "Parameters", "ACE", "MFI", "final / prelim", "b_gse"],
 ]
 
 

@@ -57,6 +57,20 @@ def test_find_index_by_path_case_insensitive():
     assert result._name == "mms"
 
 
+def test_find_index_by_path_matches_the_real_ace_mfi_candidate_path():
+    from SciQLop.components.onboarding.backend.targets import (
+        find_index_by_path, CANDIDATE_PRODUCT_PATHS,
+    )
+    model = _fake_model({
+        "speasy": {"amda": {"Parameters": {"ACE": {"MFI": {
+            "final / prelim": {"b_gse": {}},
+        }}}}},
+    })
+    result = find_index_by_path(model, CANDIDATE_PRODUCT_PATHS[0])
+    assert result is not None
+    assert result._name == "b_gse"
+
+
 from .fixtures import *
 
 
