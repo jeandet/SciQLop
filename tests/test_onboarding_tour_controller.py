@@ -2,128 +2,222 @@ from .fixtures import *
 import pytest
 
 
+def _make_step(step_id, resolver, completion=None, **kwargs):
+    from SciQLop.components.onboarding.backend.tour import TourStep
+    return TourStep(
+        step_id=step_id, title=f"{step_id} title", body=f"{step_id} body",
+        resolver=resolver, completion=completion, **kwargs,
+    )
+
+
+def _make_tour(tour_id, steps):
+    from SciQLop.components.onboarding.backend.tour import Tour
+    return Tour(id=tour_id, title=tour_id, description="test tour", steps=steps)
+
+
 def test_start_shows_coach_mark_for_first_step(main_window, qtbot):
     from SciQLop.components.onboarding.ui.tour_controller import TourController
 
-    controller = TourController(main_window)
+    tour = _make_tour("t1", [_make_step("only", lambda mw, ctx: main_window.productTree)])
+    controller = TourController(main_window, tour)
     controller.start()
     try:
         qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
-        assert controller._current_step().step_id == "create_panel"
+        assert controller._current_step().step_id == "only"
     finally:
         controller.abort()
 
 
-def test_clicking_add_panel_button_advances_to_open_products_step(main_window, qtbot):
+def test_dismiss_only_step_advances_on_got_it(main_window, qtbot):
     from SciQLop.components.onboarding.ui.tour_controller import TourController
-    from SciQLop.components.onboarding.backend.targets import resolve_add_panel_button
 
-    controller = TourController(main_window)
+    tour = _make_tour("t2", [
+        _make_step("first", lambda mw, ctx: main_window.productTree),
+        _make_step("second", lambda mw, ctx: main_window.productTree),
+    ])
+    controller = TourController(main_window, tour)
     controller.start()
     try:
-        qtbot.waitUntil(
-            lambda: resolve_add_panel_button(main_window) is not None, timeout=1000)
-        button = resolve_add_panel_button(main_window)
-        button.click()
-        qtbot.waitUntil(
-            lambda: controller._current_step().step_id == "open_products",
-            timeout=2000)
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        controller._coach_mark.dismiss_clicked.emit()
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "second", timeout=1000)
     finally:
         controller.abort()
-        panel_names = main_window.plot_panels()
-        for name in panel_names:
-            main_window.remove_panel(main_window.plot_panel(name))
 
 
-def test_skip_sets_tour_completed_and_hides_overlay(main_window, qtbot):
+def test_completion_signal_advances_and_stores_single_arg_in_context(main_window, qtbot):
+    from PySide6.QtCore import QObject, Signal
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    class _Emitter(QObject):
+        fired = Signal(str)
+
+    emitter = _Emitter()
+    tour = _make_tour("t3", [
+        _make_step("wait_for_it", lambda mw, ctx: main_window.productTree,
+                   completion=lambda mw, ctx: emitter.fired),
+        _make_step("after", lambda mw, ctx: main_window.productTree),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        emitter.fired.emit("payload")
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "after", timeout=1000)
+        assert controller._context["wait_for_it"] == "payload"
+    finally:
+        controller.abort()
+
+
+def test_completion_predicate_filters_signal_args(main_window, qtbot):
+    from PySide6.QtCore import QObject, Signal
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    class _Emitter(QObject):
+        fired = Signal(bool)
+
+    emitter = _Emitter()
+    tour = _make_tour("t4", [
+        _make_step("wait_true", lambda mw, ctx: main_window.productTree,
+                   completion=lambda mw, ctx: (emitter.fired, lambda v: v)),
+        _make_step("after", lambda mw, ctx: main_window.productTree),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        emitter.fired.emit(False)
+        qtbot.wait(100)
+        assert controller._current_step().step_id == "wait_true"
+
+        emitter.fired.emit(True)
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "after", timeout=1000)
+    finally:
+        controller.abort()
+
+
+def test_tuple_target_unpacks_widget_and_rect(main_window, qtbot):
+    from PySide6.QtCore import QRect
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    rect = QRect(1, 2, 3, 4)
+    tour = _make_tour("t5", [
+        _make_step("with_rect", lambda mw, ctx: (main_window.productTree, rect)),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        assert controller._coach_mark._target_local_rect == rect
+    finally:
+        controller.abort()
+
+
+def test_later_step_resolver_reads_earlier_step_context(main_window, qtbot):
+    from PySide6.QtCore import QObject, Signal
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    class _Emitter(QObject):
+        fired = Signal(str)
+
+    emitter = _Emitter()
+
+    def _second_resolver(mw, ctx):
+        assert ctx["first"] == "stored"
+        return main_window.productTree
+
+    tour = _make_tour("t6", [
+        _make_step("first", lambda mw, ctx: main_window.productTree,
+                   completion=lambda mw, ctx: (emitter.fired, lambda *a: True)),
+        _make_step("second", _second_resolver),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        emitter.fired.emit("stored")
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "second", timeout=1000)
+    finally:
+        controller.abort()
+
+
+def test_poll_step_times_out_and_aborts_with_message(main_window, qtbot):
     from SciQLop.components.onboarding.ui.tour_controller import TourController
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 
     with OnboardingSettings() as s:
-        s.tour_completed = False
+        s.completed_tours = {}
 
-    controller = TourController(main_window)
+    tour = _make_tour("t7", [
+        _make_step("never_resolves", lambda mw, ctx: None,
+                   poll=True, timeout_message="gave up"),
+    ])
+    controller = TourController(main_window, tour)
+    controller._SHORT_TIMEOUT_FOR_TESTS = 0.2
+    controller.start()
+    qtbot.waitUntil(lambda: OnboardingSettings().completed_tours.get("t7") is True, timeout=2000)
+    assert not controller._coach_mark.isVisible()
+
+
+def test_skip_sets_completed_and_hides_overlay(main_window, qtbot):
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+    from SciQLop.components.onboarding.backend.settings import OnboardingSettings
+
+    with OnboardingSettings() as s:
+        s.completed_tours = {}
+
+    tour = _make_tour("t8", [_make_step("only", lambda mw, ctx: main_window.productTree)])
+    controller = TourController(main_window, tour)
     controller.start()
     qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
 
     controller._coach_mark.skip_requested.emit()
 
     assert not controller._coach_mark.isVisible()
-    assert OnboardingSettings().tour_completed is True
-
-
-def test_step_3_timeout_aborts_whole_tour(main_window, qtbot, monkeypatch):
-    from SciQLop.components.onboarding.ui import tour_controller as tc_mod
-    from SciQLop.components.onboarding.backend.settings import OnboardingSettings
-    from SciQLop.components.onboarding.backend.targets import (
-        resolve_add_panel_button, resolve_products_side_tab)
-
-    # Make the step-3 resolver always return None so its poll times out —
-    # steps 1 and 2 are still driven for real (cheap, deterministic).
-    monkeypatch.setitem(tc_mod.RESOLVERS, "first_candidate_product", lambda mw: None)
-
-    controller = tc_mod.TourController(main_window)
-    controller._SHORT_TIMEOUT_FOR_TESTS = 0.2  # see Step 3 implementation note
-    controller.start()
-    try:
-        qtbot.waitUntil(lambda: resolve_add_panel_button(main_window) is not None, timeout=1000)
-        resolve_add_panel_button(main_window).click()
-        qtbot.waitUntil(lambda: controller._current_step().step_id == "open_products", timeout=2000)
-
-        resolve_products_side_tab(main_window).click()
-        qtbot.waitUntil(lambda: controller._current_step().step_id == "plot_product", timeout=2000)
-
-        # Step 3 polls silently (no coach mark shown) while waiting for its
-        # target to resolve, so `not coach_mark.isVisible()` is already true
-        # the instant polling starts -- it can't distinguish "still polling"
-        # from "tour actually timed out and aborted". Wait on the
-        # `tour_completed` flag itself instead: it's set exactly once, by
-        # `_finish()`, on both the full-completion and the step-3-abort path.
-        qtbot.waitUntil(lambda: OnboardingSettings().tour_completed is True, timeout=3000)
-        assert not controller._coach_mark.isVisible()
-    finally:
-        for name in main_window.plot_panels():
-            main_window.remove_panel(main_window.plot_panel(name))
+    assert OnboardingSettings().completed_tours.get("t8") is True
 
 
 def test_replaying_after_completion_does_not_double_fire_on_stale_connections(main_window, qtbot):
     """Regression guard: a finished/aborted controller must disconnect its
-    per-step completion signal, or a second (replay) controller's own count
+    per-step completion signal, or a second (replay) controller's own state
     gets corrupted by the first controller's dead handler still reacting to
-    panel_added/plot_added on the shared, long-lived main_window."""
+    the shared signal both controllers' 'first' step is wired to."""
+    from PySide6.QtCore import QObject, Signal
     from SciQLop.components.onboarding.ui.tour_controller import TourController
-    from SciQLop.components.onboarding.backend.targets import resolve_add_panel_button
 
-    first = TourController(main_window)
+    class _Emitter(QObject):
+        fired = Signal(object)
+
+    emitter = _Emitter()
+    tour = _make_tour("t9", [
+        _make_step("first", lambda mw, ctx: main_window.productTree,
+                   completion=lambda mw, ctx: emitter.fired),
+        _make_step("second", lambda mw, ctx: main_window.productTree),
+    ])
+
+    first = TourController(main_window, tour)
     first.start()
-    qtbot.waitUntil(lambda: resolve_add_panel_button(main_window) is not None, timeout=1000)
+    qtbot.waitUntil(lambda: first._coach_mark.isVisible(), timeout=1000)
     first.abort()
     assert first.is_finished is True
 
-    second = TourController(main_window)
+    second = TourController(main_window, tour)
     second.start()
     try:
-        qtbot.waitUntil(lambda: resolve_add_panel_button(main_window) is not None, timeout=1000)
-        resolve_add_panel_button(main_window).click()
-        qtbot.waitUntil(lambda: second._current_step().step_id == "open_products", timeout=2000)
+        qtbot.waitUntil(lambda: second._coach_mark.isVisible(), timeout=1000)
+        emitter.fired.emit(object())
+        qtbot.waitUntil(lambda: second._current_step().step_id == "second", timeout=1000)
         assert second._step_index == 1
     finally:
         second.abort()
-        for name in main_window.plot_panels():
-            main_window.remove_panel(main_window.plot_panel(name))
 
 
 def test_finish_sets_is_finished_and_disposes_coach_mark_and_controller(main_window, qtbot):
-    """Regression guard for the whole-branch-review findings: `_finish()`
-    must both flip a public `is_finished` flag (so mainwindow.py can guard
-    against starting a second tour without reaching into a private
-    attribute) and dispose of the coach mark + itself, or every tour
-    run/replay leaks a hidden CoachMark that keeps intercepting every
-    Resize/Move event on main_window forever."""
     import shiboken6
     from SciQLop.components.onboarding.ui.tour_controller import TourController
 
-    controller = TourController(main_window)
+    tour = _make_tour("t10", [_make_step("only", lambda mw, ctx: main_window.productTree)])
+    controller = TourController(main_window, tour)
     controller.start()
     qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
 
@@ -139,18 +233,6 @@ def test_finish_sets_is_finished_and_disposes_coach_mark_and_controller(main_win
 
 def test_deferred_cleanup_tolerates_coach_mark_and_controller_already_destroyed(
         main_window, qtbot, monkeypatch):
-    """Regression guard for the re-review finding: `_dispose()`'s deferred
-    `_cleanup()` closure must guard `coach_mark`/`self` with
-    `shiboken6.isValid()` before touching them, since both are QObjects
-    parented to main_window and could in principle be torn down (e.g. by
-    main_window itself being destroyed) in the narrow window between
-    `_finish()` returning and the `QTimer.singleShot(0, ...)` callback
-    actually firing. Reproduced deterministically by intercepting
-    `QTimer.singleShot` so the callback is captured but not auto-run, then
-    destroying both objects for real via `deleteLater()` before invoking
-    the captured callback ourselves -- this exercises the exact "objects
-    already gone by the time _cleanup runs" scenario without relying on a
-    real, timing-dependent race."""
     import shiboken6
     from SciQLop.components.onboarding.ui import tour_controller as tc_mod
     from SciQLop.components.onboarding.ui.tour_controller import TourController
@@ -162,7 +244,8 @@ def test_deferred_cleanup_tolerates_coach_mark_and_controller_already_destroyed(
 
     monkeypatch.setattr(tc_mod.QTimer, "singleShot", capture_single_shot)
 
-    controller = TourController(main_window)
+    tour = _make_tour("t11", [_make_step("only", lambda mw, ctx: main_window.productTree)])
+    controller = TourController(main_window, tour)
     controller.start()
     qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
 
@@ -179,34 +262,50 @@ def test_deferred_cleanup_tolerates_coach_mark_and_controller_already_destroyed(
 
 
 def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resources, qtbot):
-    """Regression guard for the design spec's 'any target destroyed mid-tour
-    aborts gracefully' requirement: destroying step 2's own target widget
-    (the Products side-tab) while it's active must not crash and must still
-    mark the tour completed (not leave it stuck forever).
-
-    Uses a disposable, per-test main window (not the shared session-scoped
+    """Uses a disposable, per-test main window (not the shared session-scoped
     `main_window` fixture) because this test destroys a widget that fixture
     is expected to keep alive for every other test in the suite."""
     from SciQLop.core.ui.mainwindow import SciQLopMainWindow
     from SciQLop.components.onboarding.ui.tour_controller import TourController
     from SciQLop.components.onboarding.backend.settings import OnboardingSettings
-    from SciQLop.components.onboarding.backend.targets import resolve_add_panel_button
 
     with OnboardingSettings() as s:
-        s.tour_completed = False
+        s.completed_tours = {}
 
     mw = SciQLopMainWindow()
     try:
-        controller = TourController(mw)
+        target = mw.productTree
+        tour = _make_tour("t12", [_make_step("only", lambda mw_, ctx: target)])
+        controller = TourController(mw, tour)
         controller.start()
-        qtbot.waitUntil(lambda: resolve_add_panel_button(mw) is not None, timeout=1000)
-        resolve_add_panel_button(mw).click()
-        qtbot.waitUntil(lambda: controller._current_step().step_id == "open_products", timeout=2000)
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
 
-        controller._coach_mark._target.deleteLater()
-        qtbot.waitUntil(lambda: OnboardingSettings().tour_completed is True, timeout=2000)
+        target.deleteLater()
+        qtbot.waitUntil(lambda: OnboardingSettings().completed_tours.get("t12") is True, timeout=2000)
         assert not controller._coach_mark.isVisible()
     finally:
-        for name in mw.plot_panels():
-            mw.remove_panel(mw.plot_panel(name))
         mw.close()
+
+
+def test_real_getting_started_tour_advances_on_real_panel_creation(main_window, qtbot):
+    """One true end-to-end smoke test against the real, registered
+    Getting Started tour -- proves the ported content actually works
+    through the generalized controller, not just fabricated test tours."""
+    from SciQLop.components.onboarding.backend import registry
+    from SciQLop.components.onboarding.backend.targets import resolve_add_panel_button
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    registry.register_builtin_tours()
+    tour = registry.get_tour("getting_started")
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: resolve_add_panel_button(main_window, {}) is not None, timeout=1000)
+        resolve_add_panel_button(main_window, {}).click()
+        qtbot.waitUntil(
+            lambda: controller._current_step().step_id == "open_products", timeout=2000)
+        assert controller._context["create_panel"] is not None
+    finally:
+        controller.abort()
+        for name in main_window.plot_panels():
+            main_window.remove_panel(main_window.plot_panel(name))

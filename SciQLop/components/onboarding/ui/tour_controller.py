@@ -2,8 +2,8 @@ import shiboken6
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
-from SciQLop.components.onboarding.backend.tour import TOUR_STEPS, TourStep
-from SciQLop.components.onboarding.backend.targets import RESOLVERS
+from SciQLop.components.onboarding.backend.tour import Tour, TourStep
+from SciQLop.components.onboarding.backend.registry import get_tour
 from SciQLop.components.onboarding.backend.settings import OnboardingSettings
 from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 from SciQLop.components.sciqlop_logging import getLogger
@@ -16,34 +16,55 @@ _POLL_INTERVAL_S = 0.25
 def _log_safely(message: str, level: str = "info") -> None:
     """Logging must never crash the app. The module-level logger's Qt
     signal can itself already be torn down if this fires from deep inside
-    an interpreter/QApplication shutdown cascade (e.g. a user quits SciQLop
-    while a tour's coach-mark target is being destroyed as part of the same
-    teardown) -- swallow that one, narrow failure mode rather than let a
-    diagnostic log call bring down shutdown."""
+    an interpreter/QApplication shutdown cascade -- swallow that one,
+    narrow failure mode rather than let a diagnostic log call bring down
+    shutdown."""
     try:
         getattr(log, level)(message)
     except RuntimeError:
         pass
 
 
+def _normalize_completion(result):
+    """A step's completion callable returns a bare Signal, a
+    (Signal, predicate) tuple, or None. Normalize to (Signal, predicate)
+    so the controller has one shape to connect."""
+    if result is None:
+        return None
+    if isinstance(result, tuple):
+        return result
+    return result, (lambda *args: True)
+
+
+def _store_completion_args(context: dict, step_id: str, args: tuple) -> None:
+    if len(args) == 0:
+        context[step_id] = True
+    elif len(args) == 1:
+        context[step_id] = args[0]
+    else:
+        context[step_id] = args
+
+
 class TourController(QObject):
-    """Walks TOUR_STEPS against a live SciQLopMainWindow, one CoachMark at a
-    time, advancing on each step's completion signal or on the coach mark's
-    own dismiss/skip actions.
+    """Walks a Tour's steps against a live SciQLopMainWindow, one CoachMark
+    at a time, advancing on each step's completion signal or on the coach
+    mark's own dismiss/skip actions. Carries no knowledge of which specific
+    tour it's running -- every branch is driven by the step's own resolver/
+    completion callables.
 
     Every step's completion connection is torn down as soon as that step is
-    left (advance, abort, or replaced by a new step) — main_window and its
+    left (advance, abort, or replaced by a new step) -- main_window and its
     dock widgets/panels outlive any single tour run, so a stale connection
     left dangling past its step would keep firing into a finished
-    controller on a later, unrelated replay (see
-    test_replaying_after_completion_does_not_double_fire_on_stale_connections).
+    controller on a later, unrelated replay.
     """
 
     _SHORT_TIMEOUT_FOR_TESTS: float | None = None
 
-    def __init__(self, main_window):
+    def __init__(self, main_window, tour: Tour):
         super().__init__(main_window)
         self._main_window = main_window
+        self._tour = tour
         self._coach_mark = CoachMark(main_window)
         self._coach_mark.skip_requested.connect(self._on_skip)
         self._coach_mark.dismiss_clicked.connect(self._on_dismiss)
@@ -51,7 +72,7 @@ class TourController(QObject):
         self._step_index = 0
         self._poll_timer: QTimer | None = None
         self._poll_deadline_s = 0.0
-        self._panel_from_step_1 = None
+        self._context: dict = {}
         self._active_signal = None
         self._active_slot = None
         self._finished = False
@@ -61,7 +82,7 @@ class TourController(QObject):
         return self._finished
 
     def _current_step(self) -> TourStep:
-        return TOUR_STEPS[self._step_index]
+        return self._tour.steps[self._step_index]
 
     def start(self) -> None:
         self._step_index = 0
@@ -76,20 +97,14 @@ class TourController(QObject):
 
     def _finish(self) -> None:
         """Mark the tour as over and detach the controller from CoachMark's
-        own signals — main_window and its child widgets (including this
-        controller's CoachMark) outlive any single tour run, so a finished
-        controller left listening for target_destroyed/skip_requested/
-        dismiss_clicked would still react to unrelated later widget teardown
-        (e.g. main_window.close() destroying whatever this controller's last
-        target happened to be), which is exactly the trap this method closes
-        off. Idempotent: safe to call from multiple exit paths."""
+        own signals. Idempotent: safe to call from multiple exit paths."""
         if self._finished:
             return
         self._finished = True
         self._detach_coach_mark_signals()
         self._coach_mark.hide()
         with OnboardingSettings() as s:
-            s.tour_completed = True
+            s.completed_tours[self._tour.id] = True
         self._dispose()
 
     def _dispose(self) -> None:
@@ -120,23 +135,13 @@ class TourController(QObject):
         return step.timeout_s
 
     def _resolve_target(self, step: TourStep):
-        resolver = RESOLVERS[step.resolver_id]
-        if step.step_id == "overlay_vs_new_subplot":
-            return resolver(self._main_window, self._panel_from_step_1)
-        return resolver(self._main_window)
+        return step.resolver(self._main_window, self._context)
 
     def _enter_current_step(self) -> None:
         step = self._current_step()
         target = self._resolve_target(step)
 
         if target is None and not step.poll:
-            # Non-poll targets (e.g. the add-panel button) are core mainwindow
-            # widgets that are created via a deferred QTimer.singleShot(0, ...)
-            # right after their dock area is set up — on a just-constructed
-            # main_window, entering a step before that tick has run would
-            # otherwise abort the whole tour on a pure startup race. Flushing
-            # pending events once gives that deferred creation a chance to run
-            # before we decide the target is really missing.
             QApplication.processEvents()
             target = self._resolve_target(step)
 
@@ -187,43 +192,32 @@ class TourController(QObject):
         self._active_slot = None
 
     def _show_step(self, step: TourStep, target) -> None:
-        if step.step_id == "plot_product":
+        if isinstance(target, tuple):
             widget, local_rect = target
         else:
             widget, local_rect = target, None
 
-        show_dismiss = step.completion_signal_id is None
+        show_dismiss = step.completion is None
         self._coach_mark.show_for(widget, step.title, step.body,
                                   rect=local_rect, show_dismiss=show_dismiss)
 
         self._disconnect_active_completion()
-        if step.completion_signal_id == "panel_created":
-            self._active_signal = self._main_window.panel_added
-            self._active_slot = self._on_panel_created
-        elif step.completion_signal_id == "products_visible":
-            dw = self._main_window.dock_manager.findDockWidget("Products")
-            self._active_signal = dw.visibilityChanged if dw is not None else None
-            self._active_slot = self._on_products_visible
-        elif step.completion_signal_id == "plot_added":
-            self._active_signal = self._panel_from_step_1.plot_added
-            self._active_slot = self._on_plot_added
+        raw = step.completion(self._main_window, self._context) if step.completion else None
+        normalized = _normalize_completion(raw)
+        if normalized is not None:
+            signal, predicate = normalized
+            self._active_signal = signal
+
+            def _slot(*args, _step=step, _predicate=predicate):
+                if _predicate(*args):
+                    _store_completion_args(self._context, _step.step_id, args)
+                    self._advance()
+
+            self._active_slot = _slot
+            self._active_signal.connect(self._active_slot)
         else:
             self._active_signal = None
             self._active_slot = None
-
-        if self._active_signal is not None:
-            self._active_signal.connect(self._active_slot)
-
-    def _on_panel_created(self, panel) -> None:
-        self._panel_from_step_1 = panel
-        self._advance()
-
-    def _on_products_visible(self, visible: bool) -> None:
-        if visible:
-            self._advance()
-
-    def _on_plot_added(self, *_args) -> None:
-        self._advance()
 
     def _on_dismiss(self) -> None:
         self._advance()
@@ -239,13 +233,17 @@ class TourController(QObject):
         self._disconnect_active_completion()
         self._coach_mark.hide()
         self._step_index += 1
-        if self._step_index >= len(TOUR_STEPS):
+        if self._step_index >= len(self._tour.steps):
             self._finish()
             return
         self._enter_current_step()
 
 
-def run_tour(main_window) -> TourController:
-    controller = TourController(main_window)
+def run_tour(main_window, tour_id: str) -> TourController | None:
+    tour = get_tour(tour_id)
+    if tour is None:
+        _log_safely(f"Onboarding: unknown tour {tour_id!r}, not starting", level="warning")
+        return None
+    controller = TourController(main_window, tour)
     controller.start()
     return controller
