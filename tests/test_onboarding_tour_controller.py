@@ -96,6 +96,42 @@ def test_completion_predicate_filters_signal_args(main_window, qtbot):
         controller.abort()
 
 
+def test_target_destroyed_mid_step_advances_instead_of_vanishing_the_tour(main_window, qtbot):
+    """A step's target can be destroyed by something entirely outside the
+    tour's control -- diagnostic instrumentation on a real run showed a
+    just-created, real (non-placeholder) plot getting destroyed moments
+    after overlay_vs_new_subplot targeted it, for reasons in SciQLopPlots/
+    Wayland's drag-and-drop handling, not this component. Ending the whole
+    tour when that happens is exactly the "tour just disappeared" failure
+    users hate -- advance to the next step instead, the same way a
+    dismiss-only tip's "Got it" button would. (A single-step tour still
+    ends up finished either way -- see
+    test_single_step_tour_finishes_when_its_only_target_is_destroyed for
+    that degenerate case -- this test proves it's a genuine advance, not
+    just an early finish, by using a second step.)"""
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    tour = _make_tour("t_target_gone", [
+        _make_step("first", lambda mw, ctx: main_window.productTree),
+        _make_step("second", lambda mw, ctx: main_window.productTree),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        assert controller._current_step().step_id == "first"
+
+        # Simulate "target destroyed mid-step" via the same signal a real
+        # destroyed widget triggers, without destroying the shared
+        # main_window.productTree other tests need to stay alive.
+        controller._coach_mark.target_destroyed.emit()
+
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "second", timeout=1000)
+        assert not controller.is_finished
+    finally:
+        controller.abort()
+
+
 def test_advance_defers_next_step_entry_to_the_next_event_loop_turn(main_window, qtbot):
     """Completion signals can fire from deep inside another framework's own
     nested/reentrant call stack -- a native drag-and-drop's QDrag::exec()
@@ -307,8 +343,13 @@ def test_deferred_cleanup_tolerates_coach_mark_and_controller_already_destroyed(
     captured["fn"]()  # must not raise RuntimeError: Internal C++ object already deleted
 
 
-def test_target_destroyed_mid_step_aborts_tour_without_crash(qapp, sciqlop_resources, qtbot):
-    """Uses a disposable, per-test main window (not the shared session-scoped
+def test_single_step_tour_finishes_when_its_only_target_is_destroyed(qapp, sciqlop_resources, qtbot):
+    """A single-step tour has no next step to advance into, so losing its
+    target still ends the tour -- same observable outcome as before this
+    was changed from an unconditional abort to an advance-past-it (see
+    test_target_destroyed_mid_step_advances_instead_of_vanishing_the_tour
+    for the multi-step case that actually distinguishes the two). Uses a
+    disposable, per-test main window (not the shared session-scoped
     `main_window` fixture) because this test destroys a widget that fixture
     is expected to keep alive for every other test in the suite."""
     import shiboken6

@@ -13,14 +13,6 @@ log = getLogger(__name__)
 _POLL_INTERVAL_S = 0.25
 
 
-def _diag(msg: str) -> None:
-    """TEMPORARY diagnostic instrumentation -- print (not the app logger,
-    which may be filtered/rerouted) so every transition is guaranteed
-    visible in the terminal. Remove once the "tour disappears after a
-    real drag-and-drop" report is root-caused."""
-    print(f"[ONBOARDING DIAG] {msg}", flush=True)
-
-
 def _log_safely(message: str, level: str = "info") -> None:
     """Logging must never crash the app. The module-level logger's Qt
     signal can itself already be torn down if this fires from deep inside
@@ -97,12 +89,6 @@ class TourController(QObject):
         self._enter_current_step()
 
     def abort(self, message: str | None = None) -> None:
-        import traceback
-        _at_step = (self._current_step().step_id
-                    if self._step_index < len(self._tour.steps) else "<past last step>")
-        _diag(f"abort() called at step {_at_step!r} "
-              f"(finished={self._finished}, message={message!r})\n"
-              + "".join(traceback.format_stack()[-6:-1]))
         self._stop_polling()
         self._disconnect_active_completion()
         self._finish()
@@ -114,10 +100,6 @@ class TourController(QObject):
         own signals. Idempotent: safe to call from multiple exit paths."""
         if self._finished:
             return
-        _at_step = (self._current_step().step_id
-                    if self._step_index < len(self._tour.steps) else "<past last step>")
-        _diag(f"_finish() called (was at step {_at_step!r}, "
-              f"step_index={self._step_index}/{len(self._tour.steps)})")
         self._finished = True
         self._detach_coach_mark_signals()
         self._coach_mark.hide()
@@ -161,43 +143,24 @@ class TourController(QObject):
             # tour was aborted/finished in the meantime (e.g. the user hit
             # Skip during that one event-loop turn), there is no next step
             # to enter.
-            _diag("_enter_current_step(): already finished, skipping")
             return
         step = self._current_step()
-        _diag(f"_enter_current_step(): entering {step.step_id!r} "
-              f"(poll={step.poll}, block_input={step.block_input})")
-        try:
-            target = self._resolve_target(step)
-        except Exception:
-            import traceback
-            _diag(f"_enter_current_step(): resolver for {step.step_id!r} RAISED:\n"
-                  + traceback.format_exc())
-            raise
+        target = self._resolve_target(step)
 
         if target is None and not step.poll:
             QApplication.processEvents()
-            try:
-                target = self._resolve_target(step)
-            except Exception:
-                import traceback
-                _diag(f"_enter_current_step(): resolver retry for {step.step_id!r} RAISED:\n"
-                      + traceback.format_exc())
-                raise
+            target = self._resolve_target(step)
 
         if step.poll and target is None:
-            _diag(f"_enter_current_step(): {step.step_id!r} target not found yet, polling")
             self._start_polling(step)
             return
 
         if target is None:
-            _diag(f"_enter_current_step(): {step.step_id!r} target not found "
-                  f"(no poll), aborting")
             _log_safely(f"Onboarding step {step.step_id!r}: target not found, aborting tour",
                         level="warning")
             self.abort()
             return
 
-        _diag(f"_enter_current_step(): {step.step_id!r} target resolved to {target!r}")
         self._show_step(step, target)
 
     def _start_polling(self, step: TourStep) -> None:
@@ -210,21 +173,12 @@ class TourController(QObject):
 
     def _poll_step(self, step: TourStep) -> None:
         import time
-        try:
-            target = self._resolve_target(step)
-        except Exception:
-            import traceback
-            _diag(f"_poll_step(): resolver for {step.step_id!r} RAISED:\n"
-                  + traceback.format_exc())
-            raise
+        target = self._resolve_target(step)
         if target is not None:
-            _diag(f"_poll_step(): {step.step_id!r} target resolved to {target!r} "
-                  f"after polling")
             self._stop_polling()
             self._show_step(step, target)
             return
         if time.monotonic() >= self._poll_deadline_s:
-            _diag(f"_poll_step(): {step.step_id!r} poll timed out, aborting")
             self._stop_polling()
             self.abort(step.timeout_message)
 
@@ -262,16 +216,7 @@ class TourController(QObject):
             self._active_signal = signal
 
             def _slot(*args, _step=step, _predicate=predicate):
-                _diag(f"completion signal fired for {_step.step_id!r} with args={args!r}")
-                try:
-                    passed = _predicate(*args)
-                except Exception:
-                    import traceback
-                    _diag(f"completion predicate for {_step.step_id!r} RAISED:\n"
-                          + traceback.format_exc())
-                    raise
-                _diag(f"completion predicate for {_step.step_id!r} -> {passed!r}")
-                if passed:
+                if _predicate(*args):
                     _store_completion_args(self._context, _step.step_id, args)
                     self._advance()
 
@@ -288,22 +233,28 @@ class TourController(QObject):
         self.abort()
 
     def _on_target_gone(self) -> None:
+        # A step's target can be destroyed by something entirely outside
+        # this component's control (observed live: a real, successfully
+        # created plot destroyed moments after a step targeted it, from
+        # SciQLopPlots/Wayland drag-and-drop handling, not this code).
+        # Ending the whole tour here is exactly the "tour just
+        # disappeared" failure mode this exists to avoid -- advance to
+        # the next step instead, the same way a dismiss-only tip's
+        # "Got it" button would. A tour on its last step still ends up
+        # finished either way, via _advance()'s own end-of-tour check.
         _at_step = (self._current_step().step_id
                     if self._step_index < len(self._tour.steps) else "<past last step>")
-        _diag(f"_on_target_gone(): target destroyed mid-step at {_at_step!r}, aborting")
-        _log_safely("Onboarding tour target was destroyed mid-step; aborting")
-        self.abort()
+        _log_safely(f"Onboarding tour target for step {_at_step!r} was destroyed "
+                    f"mid-step; advancing to the next step")
+        self._advance()
 
     def _advance(self) -> None:
-        _diag(f"_advance(): leaving step_index={self._step_index}")
         self._disconnect_active_completion()
         self._coach_mark.hide()
         self._step_index += 1
         if self._step_index >= len(self._tour.steps):
-            _diag("_advance(): reached the end of the tour, finishing")
             self._finish()
             return
-        _diag(f"_advance(): scheduling deferred entry into step_index={self._step_index}")
         # A completion signal can fire from deep inside another
         # framework's own nested/reentrant call stack -- a native
         # drag-and-drop's QDrag::exec() runs its own local event loop,
