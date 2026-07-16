@@ -138,6 +138,12 @@ class TourController(QObject):
         return step.resolver(self._main_window, self._context)
 
     def _enter_current_step(self) -> None:
+        if self._finished:
+            # _advance() defers here via QTimer.singleShot(0, ...); if the
+            # tour was aborted/finished in the meantime (e.g. the user hit
+            # Skip during that one event-loop turn), there is no next step
+            # to enter.
+            return
         step = self._current_step()
         target = self._resolve_target(step)
 
@@ -237,7 +243,19 @@ class TourController(QObject):
         if self._step_index >= len(self._tour.steps):
             self._finish()
             return
-        self._enter_current_step()
+        # A completion signal can fire from deep inside another
+        # framework's own nested/reentrant call stack -- a native
+        # drag-and-drop's QDrag::exec() runs its own local event loop,
+        # and the drop handler that creates the real plot and emits
+        # plot_added executes from within it. Entering the next step
+        # (resolving its target, showing/raising/focusing a CoachMark)
+        # synchronously in that same call stack risks fighting with
+        # whatever cleanup the nested loop still has to do once it
+        # returns. Defer to a real event-loop turn instead -- the same
+        # reentrancy guard mainwindow.py's _on_dock_area_created already
+        # uses for dockAreaCreated firing from inside CDockAreaWidget's
+        # constructor.
+        QTimer.singleShot(0, self._enter_current_step)
 
 
 def run_tour(main_window, tour_id: str) -> TourController | None:

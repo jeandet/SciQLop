@@ -96,6 +96,46 @@ def test_completion_predicate_filters_signal_args(main_window, qtbot):
         controller.abort()
 
 
+def test_advance_defers_next_step_entry_to_the_next_event_loop_turn(main_window, qtbot):
+    """Completion signals can fire from deep inside another framework's own
+    nested/reentrant call stack -- a native drag-and-drop's QDrag::exec()
+    runs its own local event loop, and the drop handler that creates the
+    real plot and emits plot_added executes from within it. Showing a new
+    CoachMark synchronously in that same call stack risks fighting with
+    whatever cleanup that nested loop still has to do once it returns.
+    _advance() must defer entering the next step to a real event-loop
+    turn, not do it synchronously inside the completion slot -- matching
+    the same reentrancy guard mainwindow.py's _on_dock_area_created
+    already uses for dockAreaCreated firing from inside
+    CDockAreaWidget's constructor."""
+    from PySide6.QtCore import QObject, Signal
+    from SciQLop.components.onboarding.ui.tour_controller import TourController
+
+    class _Emitter(QObject):
+        fired = Signal()
+
+    emitter = _Emitter()
+    tour = _make_tour("t_defer", [
+        _make_step("first", lambda mw, ctx: main_window.productTree,
+                   completion=lambda mw, ctx: emitter.fired),
+        _make_step("second", lambda mw, ctx: main_window.productTree),
+    ])
+    controller = TourController(main_window, tour)
+    controller.start()
+    try:
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+        emitter.fired.emit()
+        assert not controller._coach_mark.isVisible(), (
+            "the next step's coach mark must not be shown synchronously "
+            "inside the completion slot's own call stack -- _advance() "
+            "hides the coach mark immediately but must defer showing it "
+            "again for the next step to a real event-loop turn")
+        qtbot.waitUntil(lambda: controller._current_step().step_id == "second", timeout=1000)
+        qtbot.waitUntil(lambda: controller._coach_mark.isVisible(), timeout=1000)
+    finally:
+        controller.abort()
+
+
 def test_tuple_target_unpacks_widget_and_rect(main_window, qtbot):
     from PySide6.QtCore import QRect
     from SciQLop.components.onboarding.ui.tour_controller import TourController
