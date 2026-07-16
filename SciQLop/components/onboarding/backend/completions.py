@@ -43,22 +43,15 @@ class _PlotListSettled(QObject):
         return any(p is not None and p.objectName() != "PlaceHolder" for p in plots)
 
     def _on_plot_list_changed(self, plots) -> None:
-        print(f"[ONBOARDING DIAG] plot_list_changed: "
-              f"{[(p.objectName() if p is not None else None) for p in plots]}", flush=True)
         if self._has_real_plot(plots):
-            print(f"[ONBOARDING DIAG]   -> real plot present, (re)starting "
-                  f"{self._SETTLE_MS}ms settle timer", flush=True)
             self._timer.start(self._SETTLE_MS)
         else:
-            print("[ONBOARDING DIAG]   -> no real plot, stopping settle timer", flush=True)
             self._timer.stop()
 
     def _on_settled(self) -> None:
         real_plots = [p for p in self._panel.plots()
                      if p is not None and p.objectName() != "PlaceHolder"]
-        print(f"[ONBOARDING DIAG] settle timer fired, real_plots={real_plots}", flush=True)
         if real_plots:
-            print(f"[ONBOARDING DIAG]   -> emitting ready({real_plots[-1]!r})", flush=True)
             self.ready.emit(real_plots[-1])
 
 

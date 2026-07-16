@@ -54,6 +54,46 @@ def test_bubble_stays_within_a_near_full_width_target_instead_of_the_window_edge
         f"estate: bubble={bubble_rect}, target={target.geometry()}")
 
 
+def test_bubble_stays_outside_the_click_through_cutout_for_a_near_full_window_target(qtbot):
+    """Reproduces a real report: for overlay_vs_new_subplot, whose target
+    (the panel) spans nearly the whole window, the user saw only the
+    panel highlighted -- no info bubble at all, so they assumed the tour
+    was stuck and quit. The previous fix (8c01f282) anchored the bubble
+    "inside the target's own left edge" when neither side has room, which
+    IS within target.geometry() (test_bubble_stays_within_a_near_full_...
+    above already covers that geometric property) -- but that position
+    also falls inside _cutout_rect(), the region excluded from setMask()
+    to let clicks/painting pass through to the target underneath. Per
+    QWidget::setMask's documented behavior ("only the parts of the widget
+    which overlap region [are] visible... masked widgets receive mouse
+    events only on their visible portions"), a child positioned inside
+    the excluded region is not just badly placed -- it's invisible and
+    unclickable. The bubble's own rect must never be part of the
+    click-through hole, regardless of where it lands relative to the
+    target."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    host.resize(1820, 1068)
+    target = QPushButton("target", host)
+    target.setGeometry(42, 56, 1778, 946)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(target, "Adding more data", (
+        "Adding more data: drop a product in the middle of a graph to "
+        "overlay it there, or near its top/bottom edge (watch for the "
+        "blue highlight) to stack it as a new plot in this panel."))
+
+    bubble_center = mark._bubble.geometry().center()
+    assert mark.mask().contains(bubble_center), (
+        "bubble sits inside the click-through cutout -- invisible and "
+        f"unclickable; bubble={mark._bubble.geometry()}, "
+        f"cutout={mark._cutout_rect()}")
+
+
 def test_esc_emits_skip_requested(qtbot):
     from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 

@@ -49,8 +49,6 @@ class CoachMark(QWidget):
     def show_for(self, target: QWidget, title: str, body: str, *,
                  rect: QRect | None = None, show_dismiss: bool = True,
                  block_input: bool = True) -> None:
-        print(f"[ONBOARDING DIAG] CoachMark.show_for(): target={target!r}, "
-              f"valid={shiboken6.isValid(target)}", flush=True)
         self._detach_target()
         self._target = target
         self._target_local_rect = rect
@@ -68,16 +66,10 @@ class CoachMark(QWidget):
         # Escape still works (keyPressEvent isn't mouse input).
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not block_input)
         self.setGeometry(self._main_window.rect())
-        print(f"[ONBOARDING DIAG] CoachMark.show_for(): before _reposition_bubble, "
-              f"target valid={shiboken6.isValid(self._target)}", flush=True)
         self._reposition_bubble()
-        print(f"[ONBOARDING DIAG] CoachMark.show_for(): after _reposition_bubble, "
-              f"target valid={shiboken6.isValid(self._target)}", flush=True)
         self.show()
         self.raise_()
         self.setFocus()
-        print(f"[ONBOARDING DIAG] CoachMark.show_for(): done, "
-              f"target valid={shiboken6.isValid(self._target)}", flush=True)
 
     def dispose(self) -> None:
         """Detach from both the current target and `main_window` itself.
@@ -102,12 +94,6 @@ class CoachMark(QWidget):
             pass
 
     def _on_target_destroyed(self, *_):
-        # Deliberately not calling repr()/any Qt method on self._target here --
-        # this fires from deep inside the target's own C++ destructor (see
-        # docs/qt-lifetime-patterns.md), so only safe, non-dispatching
-        # Python-level introspection (type/id) is used for diagnosis.
-        print(f"[ONBOARDING DIAG] CoachMark._on_target_destroyed(): "
-              f"_target type={type(self._target)}, id={id(self._target):#x}", flush=True)
         self._target = None
         self.hide()
         self.target_destroyed.emit()
@@ -137,25 +123,29 @@ class CoachMark(QWidget):
 
     def _reposition_bubble(self) -> None:
         rect = self._target_rect()
+        if rect is not None:
+            bubble_width = self._bubble.width()
+            bubble_x = rect.right() + 12
+            if bubble_x + bubble_width > self.width():
+                bubble_x = rect.left() - bubble_width - 12
+                if bubble_x < 0:
+                    # Neither side of the target has room -- it spans most of
+                    # the window (e.g. a first plot in an otherwise-empty
+                    # panel). Anchor inside the target's own left edge instead
+                    # of drifting to the window's absolute edge, which can
+                    # land the bubble on top of unrelated UI (e.g. a docked
+                    # side panel) rather than the target it's meant to label.
+                    bubble_x = max(rect.left(), 0)
+            bubble_x = min(bubble_x, self.width() - bubble_width)
+            bubble_y = max(0, min(rect.top(), self.height() - self._bubble.sizeHint().height()))
+            self._bubble.move(bubble_x, bubble_y)
+            self._bubble.adjustSize()
+        # Must run AFTER the bubble's own position is finalized above --
+        # _update_mask() reads the bubble's current geometry (see
+        # _dimmed_path) to keep it out of the click-through cutout, so
+        # computing the mask first would carve the hole around the
+        # bubble's stale, pre-move position instead of its real one.
         self._update_mask()
-        if rect is None:
-            return
-        bubble_width = self._bubble.width()
-        bubble_x = rect.right() + 12
-        if bubble_x + bubble_width > self.width():
-            bubble_x = rect.left() - bubble_width - 12
-            if bubble_x < 0:
-                # Neither side of the target has room -- it spans most of
-                # the window (e.g. a first plot in an otherwise-empty
-                # panel). Anchor inside the target's own left edge instead
-                # of drifting to the window's absolute edge, which can
-                # land the bubble on top of unrelated UI (e.g. a docked
-                # side panel) rather than the target it's meant to label.
-                bubble_x = max(rect.left(), 0)
-        bubble_x = min(bubble_x, self.width() - bubble_width)
-        bubble_y = max(0, min(rect.top(), self.height() - self._bubble.sizeHint().height()))
-        self._bubble.move(bubble_x, bubble_y)
-        self._bubble.adjustSize()
 
     def _cutout_rect(self) -> QRect | None:
         rect = self._target_rect()
@@ -167,13 +157,28 @@ class CoachMark(QWidget):
         """The region that should actually block mouse input (and get
         painted dark): everything except the spotlight cutout around the
         target, so a click inside the cutout reaches the real widget behind
-        it instead of this overlay."""
+        it instead of this overlay.
+
+        The bubble's own rect is carved back OUT of the cutout: per
+        QWidget.setMask's documented contract, only the parts of a widget
+        that overlap the mask are visible or receive mouse events *at
+        all* -- that applies to this widget's children too, not just its
+        own background. A target spanning nearly the whole window (a
+        first plot in an otherwise-empty panel) produces a cutout that
+        wide as well, and _reposition_bubble's fallback anchors the
+        bubble inside the target's own bounds when there's no room on
+        either side -- which, without this exclusion, falls inside that
+        same cutout and silently disappears (invisible, unclickable),
+        not merely mispositioned."""
         path = QPainterPath()
         path.addRect(self.rect())
         cutout_rect = self._cutout_rect()
         if cutout_rect is not None:
             cutout = QPainterPath()
             cutout.addRoundedRect(cutout_rect, 6, 6)
+            bubble_path = QPainterPath()
+            bubble_path.addRect(self._bubble.geometry())
+            cutout = cutout.subtracted(bubble_path)
             path = path.subtracted(cutout)
         return path
 
