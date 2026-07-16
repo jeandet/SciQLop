@@ -20,36 +20,52 @@ def test_dock_visible_predicate_filters_on_true(main_window):
     assert predicate(False) is False
 
 
-def test_plot_added_to_reads_panel_from_context(main_window):
-    from SciQLop.components.onboarding.backend.completions import plot_added_to
-    fake_panel = type("FakePanel", (), {"plot_added": "sentinel"})()
-    context = {"create_panel": fake_panel}
-    signal, predicate = plot_added_to("create_panel")(main_window, context)
-    assert signal == "sentinel"
+def test_plot_populated_in_returns_none_when_context_key_missing():
+    from SciQLop.components.onboarding.backend.completions import plot_populated_in
+    assert plot_populated_in("create_panel")(None, {}) is None
 
 
-def test_plot_added_to_returns_none_when_context_key_missing():
-    from SciQLop.components.onboarding.backend.completions import plot_added_to
-    assert plot_added_to("create_panel")(None, {}) is None
+def test_plot_populated_in_waits_for_data_not_just_plot_creation():
+    """panel.plot_added fires the instant a plot WIDGET is inserted --
+    including SciQLopPlots' PlaceHolderManager's temporary drag-preview
+    PlaceHolder, before the user has even released the mouse, and
+    including a real plot that's still empty (SciQLopMultiPlotPanel::
+    dropEvent creates the plot shell via create_plot() before attaching
+    any data to it). A live diagnostic run showed a freshly-created, real
+    plot getting destroyed moments after an onboarding step targeted it
+    off of plot_added alone -- something in SciQLopPlots/Wayland's
+    drag-and-drop handling was still settling. plot_populated_in must
+    reject the placeholder AND wait for the real plot's OWN
+    graph_list_changed signal (fired once it actually has a graph/curve
+    attached) before completing -- not just react to the plot widget's
+    mere existence."""
+    from PySide6.QtCore import QObject, Signal
+    from SciQLop.components.onboarding.backend.completions import plot_populated_in
 
+    class _FakePlot(QObject):
+        graph_list_changed = Signal()
 
-def test_plot_added_to_predicate_rejects_the_drag_preview_placeholder():
-    """PlaceHolderManager (SciQLopPlots) inserts a temporary PlaceHolder
-    plot into the panel on dragEnterEvent/dragMoveEvent -- before the user
-    has even released the mouse -- and that insertion fires plot_added
-    the same as a real plot. If the onboarding step's completion accepted
-    that emission, it would advance mid-drag, target the placeholder in
-    the next step, and then abort the whole tour the moment the
-    placeholder gets torn down on drop. The predicate must reject any
-    plot whose objectName is "PlaceHolder" (how SciQLopPlotInterface's
-    constructor names it) and accept anything else."""
-    from SciQLop.components.onboarding.backend.completions import plot_added_to
-    fake_panel = type("FakePanel", (), {"plot_added": "sentinel"})()
-    context = {"create_panel": fake_panel}
-    _signal, predicate = plot_added_to("create_panel")(None, context)
+    class _FakePanel(QObject):
+        plot_added = Signal(object)
 
-    placeholder = type("FakePlot", (), {"objectName": lambda self: "PlaceHolder"})()
-    real_plot = type("FakePlot", (), {"objectName": lambda self: "Plot_1"})()
+    panel = _FakePanel()
+    context = {"create_panel": panel}
+    signal = plot_populated_in("create_panel")(None, context)
+    assert signal is not None
 
-    assert predicate(placeholder) is False
-    assert predicate(real_plot) is True
+    received = []
+    signal.connect(lambda plot: received.append(plot))
+
+    placeholder = _FakePlot()
+    placeholder.setObjectName("PlaceHolder")
+    panel.plot_added.emit(placeholder)
+    placeholder.graph_list_changed.emit()
+    assert received == [], "a placeholder must never complete the step, even with data"
+
+    real_plot = _FakePlot()
+    real_plot.setObjectName("Plot")
+    panel.plot_added.emit(real_plot)
+    assert received == [], "the plot exists but has no data yet -- not complete"
+
+    real_plot.graph_list_changed.emit()
+    assert received == [real_plot], "now it actually has data -- complete"
