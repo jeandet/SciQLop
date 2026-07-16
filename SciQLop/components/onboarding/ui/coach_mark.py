@@ -49,6 +49,8 @@ class CoachMark(QWidget):
     def show_for(self, target: QWidget, title: str, body: str, *,
                  rect: QRect | None = None, show_dismiss: bool = True,
                  block_input: bool = True) -> None:
+        print(f"[ONBOARDING DIAG] CoachMark.show_for(): target={target!r}, "
+              f"valid={shiboken6.isValid(target)}", flush=True)
         self._detach_target()
         self._target = target
         self._target_local_rect = rect
@@ -66,10 +68,16 @@ class CoachMark(QWidget):
         # Escape still works (keyPressEvent isn't mouse input).
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not block_input)
         self.setGeometry(self._main_window.rect())
+        print(f"[ONBOARDING DIAG] CoachMark.show_for(): before _reposition_bubble, "
+              f"target valid={shiboken6.isValid(self._target)}", flush=True)
         self._reposition_bubble()
+        print(f"[ONBOARDING DIAG] CoachMark.show_for(): after _reposition_bubble, "
+              f"target valid={shiboken6.isValid(self._target)}", flush=True)
         self.show()
         self.raise_()
         self.setFocus()
+        print(f"[ONBOARDING DIAG] CoachMark.show_for(): done, "
+              f"target valid={shiboken6.isValid(self._target)}", flush=True)
 
     def dispose(self) -> None:
         """Detach from both the current target and `main_window` itself.
@@ -94,6 +102,12 @@ class CoachMark(QWidget):
             pass
 
     def _on_target_destroyed(self, *_):
+        # Deliberately not calling repr()/any Qt method on self._target here --
+        # this fires from deep inside the target's own C++ destructor (see
+        # docs/qt-lifetime-patterns.md), so only safe, non-dispatching
+        # Python-level introspection (type/id) is used for diagnosis.
+        print(f"[ONBOARDING DIAG] CoachMark._on_target_destroyed(): "
+              f"_target type={type(self._target)}, id={id(self._target):#x}", flush=True)
         self._target = None
         self.hide()
         self.target_destroyed.emit()

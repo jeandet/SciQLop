@@ -240,9 +240,12 @@ class TourController(QObject):
         self._advance()
 
     def _on_skip(self) -> None:
+        print("[ONBOARDING DIAG] _on_skip(): skip_requested fired", flush=True)
         self.abort()
 
     def _on_target_gone(self) -> None:
+        print(f"[ONBOARDING DIAG] _on_target_gone(): step_index={self._step_index}, "
+              f"step_id={self._current_step().step_id!r}", flush=True)
         # A step's target can be destroyed by something entirely outside
         # this component's control. Advancing to the next step instead of
         # aborting was tried (commit 9062b444) and reverted: it can leave
