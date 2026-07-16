@@ -23,11 +23,11 @@ def test_polling_steps_have_timeouts():
 
 
 def test_only_plot_product_step_opts_out_of_blocking_input():
-    """plot_product's completion needs a real drag from the highlighted
-    product row to wherever the user's empty panel actually is -- the
-    coach mark must not block input outside its own cutout for this step,
-    or the drop can never land. Every other step keeps the default
-    (block input outside the cutout)."""
+    """plot_product invites a real drag from the highlighted product row
+    to wherever the user's empty panel actually is -- the coach mark
+    must not block input outside its own cutout for this step, or the
+    drop can never land. Every other step keeps the default (block
+    input outside the cutout)."""
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}
     assert by_id["plot_product"].block_input is False
@@ -37,14 +37,24 @@ def test_only_plot_product_step_opts_out_of_blocking_input():
 
 
 def test_tip_only_steps_have_no_completion():
+    """plot_product is dismiss-only, like every other tip step, rather
+    than auto-advancing on a completion signal -- six different attempts
+    at reliably detecting "the drag-and-drop finished" (the drag-preview
+    placeholder, the plot widget's mere existence, the plot's first
+    graph_list_changed) all failed against the live app for reasons this
+    component was never able to fully pin down. The user drags the
+    product (or not) and dismisses the tip ("Got it" / Escape) whenever
+    they're ready, the same as every other informational step in this
+    tour -- there is nothing left here that can silently die or get
+    stuck waiting on a signal that never fires."""
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}
     no_completion_steps = {
-        "overlay_vs_new_subplot", "shortcut_tip",
+        "plot_product", "overlay_vs_new_subplot", "shortcut_tip",
         "create_catalog", "add_event", "overlay_catalog", "browse_categories",
     }
     has_completion_steps = {
-        "create_panel", "open_products", "plot_product",
+        "create_panel", "open_products",
         "open_catalogs", "open_settings",
     }
     for step_id in no_completion_steps:

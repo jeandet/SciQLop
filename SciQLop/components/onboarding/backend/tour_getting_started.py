@@ -34,10 +34,20 @@ GETTING_STARTED = Tour(
         TourStep(
             step_id="plot_product",
             title="Plot a real product",
-            body="Drag this onto your empty panel to plot it.",
+            body="Drag this onto your empty panel to plot it, then click 'Got it' to continue.",
             resolver=targets.resolve_first_candidate_product,
+            # poll/timeout here are purely a safety net for the TARGET
+            # (the product row) not existing yet -- e.g. amda inventory
+            # still loading -- not for detecting the drag-and-drop
+            # itself. Every attempt at auto-advancing once the drop
+            # completed (drag-preview-placeholder filtering, waiting for
+            # the plot widget to exist, waiting for its first
+            # graph_list_changed) failed against the live app for
+            # reasons this component could not pin down. Dismiss-only,
+            # like every other tip step: the user drags the product (or
+            # not) and clicks "Got it" whenever ready. Nothing left here
+            # can silently die or get stuck waiting on a signal.
             poll=True,
-            completion=completions.plot_populated_in("create_panel"),
             timeout_s=10.0,
             timeout_message=_OFFLINE_MESSAGE,
             block_input=False,
