@@ -89,6 +89,8 @@ class TourController(QObject):
         self._enter_current_step()
 
     def abort(self, message: str | None = None) -> None:
+        print(f"[ONBOARDING DIAG] abort(): step_index={self._step_index}, "
+              f"message={message!r}", flush=True)
         self._stop_polling()
         self._disconnect_active_completion()
         self._finish()
@@ -138,6 +140,8 @@ class TourController(QObject):
         return step.resolver(self._main_window, self._context)
 
     def _enter_current_step(self) -> None:
+        print(f"[ONBOARDING DIAG] _enter_current_step(): step_index={self._step_index}, "
+              f"finished={self._finished}", flush=True)
         if self._finished:
             # _advance() defers here via QTimer.singleShot(0, ...); if the
             # tour was aborted/finished in the meantime (e.g. the user hit
@@ -146,6 +150,7 @@ class TourController(QObject):
             return
         step = self._current_step()
         target = self._resolve_target(step)
+        print(f"[ONBOARDING DIAG]   step_id={step.step_id!r}, target={target!r}", flush=True)
 
         if target is None and not step.poll:
             QApplication.processEvents()
@@ -211,12 +216,17 @@ class TourController(QObject):
         self._disconnect_active_completion()
         raw = step.completion(self._main_window, self._context) if step.completion else None
         normalized = _normalize_completion(raw)
+        print(f"[ONBOARDING DIAG] _show_step({step.step_id!r}): completion normalized to "
+              f"{normalized!r}", flush=True)
         if normalized is not None:
             signal, predicate = normalized
             self._active_signal = signal
 
             def _slot(*args, _step=step, _predicate=predicate):
-                if _predicate(*args):
+                predicate_result = _predicate(*args)
+                print(f"[ONBOARDING DIAG] completion slot fired for {_step.step_id!r}: "
+                      f"args={args!r}, predicate={predicate_result!r}", flush=True)
+                if predicate_result:
                     _store_completion_args(self._context, _step.step_id, args)
                     self._advance()
 
@@ -253,12 +263,16 @@ class TourController(QObject):
         self.abort()
 
     def _advance(self) -> None:
+        print(f"[ONBOARDING DIAG] _advance(): from step_index={self._step_index}", flush=True)
         self._disconnect_active_completion()
         self._coach_mark.hide()
         self._step_index += 1
         if self._step_index >= len(self._tour.steps):
+            print("[ONBOARDING DIAG]   -> last step, finishing tour", flush=True)
             self._finish()
             return
+        print(f"[ONBOARDING DIAG]   -> scheduling deferred entry into "
+              f"step_index={self._step_index}", flush=True)
         # A completion signal can fire from deep inside another
         # framework's own nested/reentrant call stack -- a native
         # drag-and-drop's QDrag::exec() runs its own local event loop,

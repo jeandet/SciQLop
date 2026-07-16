@@ -40,7 +40,7 @@ def test_plot_settled_in_waits_for_the_list_to_stop_churning(qtbot):
     from SciQLop.components.onboarding.backend import completions
     from SciQLop.components.onboarding.backend.completions import plot_settled_in, _PlotListSettled
 
-    monkeypatch_settle_ms = 50
+    monkeypatch_settle_ms = 300
     original_settle_ms = _PlotListSettled._SETTLE_MS
     _PlotListSettled._SETTLE_MS = monkeypatch_settle_ms
     try:
