@@ -34,20 +34,24 @@ GETTING_STARTED = Tour(
         TourStep(
             step_id="plot_product",
             title="Plot a real product",
-            body="Drag this onto your empty panel to plot it, then click 'Got it' to continue.",
+            body="Drag this onto your empty panel to plot it.",
             resolver=targets.resolve_first_candidate_product,
             # poll/timeout here are purely a safety net for the TARGET
             # (the product row) not existing yet -- e.g. amda inventory
             # still loading -- not for detecting the drag-and-drop
-            # itself. Every attempt at auto-advancing once the drop
-            # completed (drag-preview-placeholder filtering, waiting for
-            # the plot widget to exist, waiting for its first
-            # graph_list_changed) failed against the live app for
-            # reasons this component could not pin down. Dismiss-only,
-            # like every other tip step: the user drags the product (or
-            # not) and clicks "Got it" whenever ready. Nothing left here
-            # can silently die or get stuck waiting on a signal.
+            # itself; that's completion's job below.
             poll=True,
+            # Earlier attempts at auto-advancing once the drop completed
+            # (drag-preview-placeholder filtering via plot_added, waiting
+            # for the plot's own first graph_list_changed) reacted to the
+            # FIRST sighting of a real plot and failed against the live
+            # app: SciQLopPlots/Wayland's drag-and-drop handling keeps
+            # churning the panel's plot list (another placeholder wave,
+            # the real plot itself getting destroyed) for a period after
+            # that first sighting. plot_settled_in waits for the list to
+            # stop changing before trusting it -- see
+            # completions._PlotListSettled.
+            completion=completions.plot_settled_in("create_panel"),
             timeout_s=10.0,
             timeout_message=_OFFLINE_MESSAGE,
             block_input=False,

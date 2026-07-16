@@ -37,24 +37,20 @@ def test_only_plot_product_step_opts_out_of_blocking_input():
 
 
 def test_tip_only_steps_have_no_completion():
-    """plot_product is dismiss-only, like every other tip step, rather
-    than auto-advancing on a completion signal -- six different attempts
-    at reliably detecting "the drag-and-drop finished" (the drag-preview
-    placeholder, the plot widget's mere existence, the plot's first
-    graph_list_changed) all failed against the live app for reasons this
-    component was never able to fully pin down. The user drags the
-    product (or not) and dismisses the tip ("Got it" / Escape) whenever
-    they're ready, the same as every other informational step in this
-    tour -- there is nothing left here that can silently die or get
-    stuck waiting on a signal that never fires."""
+    """Most tip-only steps are dismiss-only -- the user reads the tip and
+    clicks "Got it" / Escape whenever they're ready. plot_product is the
+    exception: it auto-advances via plot_settled_in, which waits for the
+    panel's plot list to contain a real plot and stop churning (see
+    completions._PlotListSettled) rather than relying on the user to
+    notice and dismiss the tip themselves."""
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}
     no_completion_steps = {
-        "plot_product", "overlay_vs_new_subplot", "shortcut_tip",
+        "overlay_vs_new_subplot", "shortcut_tip",
         "create_catalog", "add_event", "overlay_catalog", "browse_categories",
     }
     has_completion_steps = {
-        "create_panel", "open_products",
+        "create_panel", "open_products", "plot_product",
         "open_catalogs", "open_settings",
     }
     for step_id in no_completion_steps:
