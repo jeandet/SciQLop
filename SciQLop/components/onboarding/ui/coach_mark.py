@@ -126,9 +126,19 @@ class CoachMark(QWidget):
         self._update_mask()
         if rect is None:
             return
+        bubble_width = self._bubble.width()
         bubble_x = rect.right() + 12
-        if bubble_x + self._bubble.sizeHint().width() > self.width():
-            bubble_x = max(0, rect.left() - self._bubble.sizeHint().width() - 12)
+        if bubble_x + bubble_width > self.width():
+            bubble_x = rect.left() - bubble_width - 12
+            if bubble_x < 0:
+                # Neither side of the target has room -- it spans most of
+                # the window (e.g. a first plot in an otherwise-empty
+                # panel). Anchor inside the target's own left edge instead
+                # of drifting to the window's absolute edge, which can
+                # land the bubble on top of unrelated UI (e.g. a docked
+                # side panel) rather than the target it's meant to label.
+                bubble_x = max(rect.left(), 0)
+        bubble_x = min(bubble_x, self.width() - bubble_width)
         bubble_y = max(0, min(rect.top(), self.height() - self._bubble.sizeHint().height()))
         self._bubble.move(bubble_x, bubble_y)
         self._bubble.adjustSize()

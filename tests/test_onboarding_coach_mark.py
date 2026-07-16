@@ -20,6 +20,40 @@ def test_show_for_positions_bubble_near_target(qtbot):
     assert mark.geometry() == host.geometry() or mark.size() == host.size()
 
 
+def test_bubble_stays_within_a_near_full_width_target_instead_of_the_window_edge(qtbot):
+    """Reproduces a real report: the onboarding tour's overlay_vs_new_subplot
+    step targets the newly created plot, which (for a first plot in an
+    otherwise-empty panel) can span almost the entire window. When neither
+    the right nor the left side of that target leaves room for the bubble,
+    the old fallback clamped to the window's absolute left edge (x=0) --
+    which, in the real app, is where the still-open Products side panel
+    lives, so the bubble rendered underneath/behind it ("half hidden").
+    The bubble must anchor inside the target's own bounds instead, never
+    to the left of where the target starts."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    host.resize(1820, 1068)
+    # A target spanning nearly the whole window, offset from the left edge
+    # by a "side panel" -- the exact shape that broke this.
+    target = QPushButton("target", host)
+    target.setGeometry(42, 56, 1778, 946)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    mark.show_for(target, "Adding more data", (
+        "Adding more data: drop a product in the middle of a graph to "
+        "overlay it there, or near its top/bottom edge (watch for the "
+        "blue highlight) to stack it as a new plot in this panel."))
+
+    bubble_rect = mark._bubble.geometry()
+    assert bubble_rect.left() >= target.geometry().left(), (
+        "bubble drifted left of the target into unrelated screen real "
+        f"estate: bubble={bubble_rect}, target={target.geometry()}")
+
+
 def test_esc_emits_skip_requested(qtbot):
     from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 
