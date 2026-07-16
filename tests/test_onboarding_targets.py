@@ -103,6 +103,22 @@ def test_resolve_latest_plot_widget_reads_panel_from_context(main_window):
         main_window, {"create_panel": fake_panel_with_plot}) is fake_widget
 
 
+def test_resolve_panel_widget_reads_panel_from_context(main_window):
+    """Targets the panel container itself, not any plot inside it -- a
+    live diagnostic run showed a freshly-created plot getting destroyed
+    moments after overlay_vs_new_subplot targeted it via
+    resolve_latest_plot_widget (root cause outside this component, in
+    SciQLopPlots/Wayland drag-and-drop handling). The panel container
+    has never been observed to die mid-tour the way an individual plot
+    can, so a purely informational tip step (no action required to
+    advance) should anchor on it instead."""
+    from SciQLop.components.onboarding.backend.targets import resolve_panel_widget
+    assert resolve_panel_widget(main_window, {}) is None
+
+    fake_panel = object()
+    assert resolve_panel_widget(main_window, {"create_panel": fake_panel}) is fake_panel
+
+
 def test_side_tab_resolver_returns_none_for_missing_dock(main_window):
     from SciQLop.components.onboarding.backend.targets import side_tab_resolver
     assert side_tab_resolver("No Such Dock")(main_window, {}) is None

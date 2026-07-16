@@ -53,6 +53,21 @@ def test_tip_only_steps_have_no_completion():
         assert by_id[step_id].completion is not None
 
 
+def test_overlay_vs_new_subplot_targets_the_stable_panel_not_the_volatile_plot():
+    """A live diagnostic run showed the freshly-created plot getting
+    destroyed moments after this step targeted it via
+    resolve_latest_plot_widget (root cause outside this component --
+    SciQLopPlots/Wayland drag-and-drop handling). The panel container has
+    never been observed to die mid-tour the way an individual plot can,
+    and this step's tip text doesn't need to point at any specific plot
+    instance -- it's a general instruction about the panel's drag-drop
+    behavior. Anchor it on the stable panel instead."""
+    from SciQLop.components.onboarding.backend import targets
+    from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
+    by_id = {s.step_id: s for s in GETTING_STARTED.steps}
+    assert by_id["overlay_vs_new_subplot"].resolver is targets.resolve_panel_widget
+
+
 def test_getting_started_is_registered():
     from SciQLop.components.onboarding.backend import registry
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED

@@ -13,16 +13,6 @@ log = getLogger(__name__)
 _POLL_INTERVAL_S = 0.25
 
 
-def _diag(msg: str) -> None:
-    """TEMPORARY diagnostic instrumentation, round 2 -- the first pass
-    (commit 1f26b752) found and fixed one real silent-abort path
-    (_on_target_gone), but the live report persisted, meaning at least
-    one more path this covers is the actual one. Print (not the app
-    logger, which may be filtered/rerouted) so every transition is
-    guaranteed visible. Remove once the report is fully root-caused."""
-    print(f"[ONBOARDING DIAG2] {msg}", flush=True)
-
-
 def _log_safely(message: str, level: str = "info") -> None:
     """Logging must never crash the app. The module-level logger's Qt
     signal can itself already be torn down if this fires from deep inside
@@ -86,7 +76,6 @@ class TourController(QObject):
         self._active_signal = None
         self._active_slot = None
         self._finished = False
-        self._diag_consecutive_target_gone = 0  # TEMPORARY: cascade detector
 
     @property
     def is_finished(self) -> bool:
@@ -95,20 +84,11 @@ class TourController(QObject):
     def _current_step(self) -> TourStep:
         return self._tour.steps[self._step_index]
 
-    def _diag_at_step(self) -> str:
-        return (self._current_step().step_id
-                if self._step_index < len(self._tour.steps) else "<past last step>")
-
     def start(self) -> None:
         self._step_index = 0
-        _diag(f"start(): step_index=0, coach_mark valid={shiboken6.isValid(self._coach_mark)}")
         self._enter_current_step()
 
     def abort(self, message: str | None = None) -> None:
-        import traceback
-        _diag(f"abort() called at step {self._diag_at_step()!r} "
-              f"(finished={self._finished}, message={message!r})\n"
-              + "".join(traceback.format_stack()[-6:-1]))
         self._stop_polling()
         self._disconnect_active_completion()
         self._finish()
@@ -120,8 +100,6 @@ class TourController(QObject):
         own signals. Idempotent: safe to call from multiple exit paths."""
         if self._finished:
             return
-        _diag(f"_finish() called (was at step {self._diag_at_step()!r}, "
-              f"step_index={self._step_index}/{len(self._tour.steps)})")
         self._finished = True
         self._detach_coach_mark_signals()
         self._coach_mark.hide()
@@ -165,12 +143,8 @@ class TourController(QObject):
             # tour was aborted/finished in the meantime (e.g. the user hit
             # Skip during that one event-loop turn), there is no next step
             # to enter.
-            _diag("_enter_current_step(): already finished, skipping")
             return
         step = self._current_step()
-        _diag(f"_enter_current_step(): entering {step.step_id!r} "
-              f"(poll={step.poll}, block_input={step.block_input}, "
-              f"coach_mark valid={shiboken6.isValid(self._coach_mark)})")
         target = self._resolve_target(step)
 
         if target is None and not step.poll:
@@ -178,20 +152,15 @@ class TourController(QObject):
             target = self._resolve_target(step)
 
         if step.poll and target is None:
-            _diag(f"_enter_current_step(): {step.step_id!r} target not found yet, polling")
             self._start_polling(step)
             return
 
         if target is None:
-            _diag(f"_enter_current_step(): {step.step_id!r} target not found "
-                  f"(no poll) -- ABORTING (unfixed path)")
             _log_safely(f"Onboarding step {step.step_id!r}: target not found, aborting tour",
                         level="warning")
             self.abort()
             return
 
-        _diag(f"_enter_current_step(): {step.step_id!r} target resolved to {target!r}, "
-              f"calling _show_step")
         self._show_step(step, target)
 
     def _start_polling(self, step: TourStep) -> None:
@@ -206,13 +175,10 @@ class TourController(QObject):
         import time
         target = self._resolve_target(step)
         if target is not None:
-            _diag(f"_poll_step(): {step.step_id!r} target resolved to {target!r} "
-                  f"after polling, calling _show_step")
             self._stop_polling()
             self._show_step(step, target)
             return
         if time.monotonic() >= self._poll_deadline_s:
-            _diag(f"_poll_step(): {step.step_id!r} poll timed out -- ABORTING (unfixed path)")
             self._stop_polling()
             self.abort(step.timeout_message)
 
@@ -232,25 +198,15 @@ class TourController(QObject):
         self._active_slot = None
 
     def _show_step(self, step: TourStep, target) -> None:
-        self._diag_consecutive_target_gone = 0  # TEMPORARY: a step actually showed
         if isinstance(target, tuple):
             widget, local_rect = target
         else:
             widget, local_rect = target, None
 
         show_dismiss = step.completion is None
-        _diag(f"_show_step({step.step_id!r}): widget={widget!r}, "
-              f"widget valid={shiboken6.isValid(widget)}, show_dismiss={show_dismiss}")
-        try:
-            self._coach_mark.show_for(widget, step.title, step.body,
-                                      rect=local_rect, show_dismiss=show_dismiss,
-                                      block_input=step.block_input)
-        except Exception:
-            import traceback
-            _diag(f"_show_step({step.step_id!r}): show_for RAISED:\n" + traceback.format_exc())
-            raise
-        _diag(f"_show_step({step.step_id!r}): show_for returned, "
-              f"coach_mark.isVisible()={self._coach_mark.isVisible()}")
+        self._coach_mark.show_for(widget, step.title, step.body,
+                                  rect=local_rect, show_dismiss=show_dismiss,
+                                  block_input=step.block_input)
 
         self._disconnect_active_completion()
         raw = step.completion(self._main_window, self._context) if step.completion else None
@@ -260,7 +216,6 @@ class TourController(QObject):
             self._active_signal = signal
 
             def _slot(*args, _step=step, _predicate=predicate):
-                _diag(f"completion signal fired for {_step.step_id!r} with args={args!r}")
                 if _predicate(*args):
                     _store_completion_args(self._context, _step.step_id, args)
                     self._advance()
@@ -272,46 +227,38 @@ class TourController(QObject):
             self._active_slot = None
 
     def _on_dismiss(self) -> None:
-        _diag(f"_on_dismiss(): at step {self._diag_at_step()!r}")
         self._advance()
 
     def _on_skip(self) -> None:
-        _diag(f"_on_skip(): at step {self._diag_at_step()!r} -- ABORTING (user-requested)")
         self.abort()
 
     def _on_target_gone(self) -> None:
         # A step's target can be destroyed by something entirely outside
-        # this component's control (observed live: a real, successfully
-        # created plot destroyed moments after a step targeted it, from
-        # SciQLopPlots/Wayland drag-and-drop handling, not this code).
-        # Ending the whole tour here is exactly the "tour just
-        # disappeared" failure mode this exists to avoid -- advance to
-        # the next step instead, the same way a dismiss-only tip's
-        # "Got it" button would. A tour on its last step still ends up
-        # finished either way, via _advance()'s own end-of-tour check.
-        self._diag_consecutive_target_gone += 1
-        _diag(f"_on_target_gone(): target destroyed mid-step at {self._diag_at_step()!r} "
-              f"(consecutive count={self._diag_consecutive_target_gone}), "
-              f"advancing instead of aborting")
-        if self._diag_consecutive_target_gone >= 3:
-            _diag("*** CASCADE DETECTED: 3+ consecutive targets destroyed without any "
-                  "step successfully showing -- something is destroying every "
-                  "subsequent target too, not just the plot ***")
-        _log_safely(f"Onboarding tour target for step {self._diag_at_step()!r} was destroyed "
-                    f"mid-step; advancing to the next step")
-        self._advance()
+        # this component's control. Advancing to the next step instead of
+        # aborting was tried (commit 9062b444) and reverted: it can leave
+        # the coach mark's dimmed overlay stuck on screen with input still
+        # blocked, because _on_target_gone fires synchronously from deep
+        # inside the target's own QObject destructor
+        # (target.destroyed -> CoachMark._on_target_destroyed ->
+        # target_destroyed.emit() -> here) -- exactly the reentrant
+        # context docs/qt-lifetime-patterns.md warns is unsafe for
+        # further Qt work, deferred or not. abort() is the safe,
+        # well-understood fallback; the actual fix for the observed
+        # instability is not retargeting THIS handler but not targeting
+        # volatile widgets in the first place (see
+        # tour_getting_started.py's overlay_vs_new_subplot step, which
+        # now targets the stable panel instead of the plot that was
+        # observed dying).
+        _log_safely("Onboarding tour target was destroyed mid-step; aborting")
+        self.abort()
 
     def _advance(self) -> None:
-        _diag(f"_advance(): leaving step_index={self._step_index} "
-              f"(coach_mark valid={shiboken6.isValid(self._coach_mark)})")
         self._disconnect_active_completion()
         self._coach_mark.hide()
         self._step_index += 1
         if self._step_index >= len(self._tour.steps):
-            _diag("_advance(): reached the end of the tour, finishing")
             self._finish()
             return
-        _diag(f"_advance(): scheduling deferred entry into step_index={self._step_index}")
         # A completion signal can fire from deep inside another
         # framework's own nested/reentrant call stack -- a native
         # drag-and-drop's QDrag::exec() runs its own local event loop,

@@ -50,7 +50,13 @@ GETTING_STARTED = Tour(
                 "overlay it there, or near its top/bottom edge (watch for the "
                 "blue highlight) to stack it as a new plot in this panel."
             ),
-            resolver=targets.resolve_latest_plot_widget,
+            # Targets the stable panel container, not the plot just
+            # created inside it -- that plot has been observed getting
+            # destroyed moments after creation (root cause outside this
+            # component, in SciQLopPlots/Wayland drag-and-drop handling),
+            # and this tip's text doesn't need to point at any specific
+            # plot instance to begin with.
+            resolver=targets.resolve_panel_widget,
         ),
         TourStep(
             step_id="shortcut_tip",

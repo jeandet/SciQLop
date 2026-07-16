@@ -83,6 +83,10 @@ def resolve_latest_plot_widget(main_window, context) -> QWidget | None:
     return plots[-1] if plots else None
 
 
+def resolve_panel_widget(main_window, context) -> QWidget | None:
+    return context.get("create_panel")
+
+
 def resolve_products_tree_widget(main_window, context) -> QWidget | None:
     return _products_tree_view(main_window)
 
