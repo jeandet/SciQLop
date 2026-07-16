@@ -137,6 +137,11 @@ def test_resolve_catalog_tree_finds_a_tree_view(main_window):
     assert isinstance(result, QTreeView)
 
 
+def test_resolve_catalogs_browser_widget_returns_the_whole_browser(main_window):
+    from SciQLop.components.onboarding.backend.targets import resolve_catalogs_browser_widget
+    assert resolve_catalogs_browser_widget(main_window, {}) is main_window.catalogs_browser
+
+
 def test_resolve_add_event_button_matches_visibility_state(main_window):
     """Doesn't assert a specific None/not-None outcome: main_window is a
     session-scoped fixture shared with unrelated test files, so whether a

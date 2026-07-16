@@ -103,6 +103,10 @@ def resolve_add_event_button(main_window, context) -> QWidget | None:
     return None
 
 
+def resolve_catalogs_browser_widget(main_window, context) -> QWidget | None:
+    return main_window.catalogs_browser
+
+
 def resolve_any_plot_with_data(main_window, context) -> QWidget | None:
     for name in main_window.plot_panels():
         panel = main_window.plot_panel(name)

@@ -122,9 +122,18 @@ class CoachMark(QWidget):
         return QRect(top_left, local_rect.size())
 
     def _reposition_bubble(self) -> None:
+        # QWidget.adjustSize()/sizeHint() compute height for the layout's
+        # UNCONSTRAINED preferred width, not the bubble's actual
+        # setFixedWidth(280) -- for a word-wrapped body label that
+        # silently clips the last line or so whenever the text needs more
+        # lines at 280px than it would at its wider "natural" width.
+        # QLayout.heightForWidth() asks for the height at the width the
+        # bubble is actually constrained to, which is the number that
+        # matters here.
+        bubble_width = self._bubble.width()
+        self._bubble.resize(bubble_width, self._bubble.layout().heightForWidth(bubble_width))
         rect = self._target_rect()
         if rect is not None:
-            bubble_width = self._bubble.width()
             bubble_x = rect.right() + 12
             if bubble_x + bubble_width > self.width():
                 bubble_x = rect.left() - bubble_width - 12
@@ -137,9 +146,8 @@ class CoachMark(QWidget):
                     # side panel) rather than the target it's meant to label.
                     bubble_x = max(rect.left(), 0)
             bubble_x = min(bubble_x, self.width() - bubble_width)
-            bubble_y = max(0, min(rect.top(), self.height() - self._bubble.sizeHint().height()))
+            bubble_y = max(0, min(rect.top(), self.height() - self._bubble.height()))
             self._bubble.move(bubble_x, bubble_y)
-            self._bubble.adjustSize()
         # Must run AFTER the bubble's own position is finalized above --
         # _update_mask() reads the bubble's current geometry (see
         # _dimmed_path) to keep it out of the click-through cutout, so

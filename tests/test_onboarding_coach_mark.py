@@ -94,6 +94,40 @@ def test_bubble_stays_outside_the_click_through_cutout_for_a_near_full_window_ta
         f"cutout={mark._cutout_rect()}")
 
 
+def test_bubble_grows_tall_enough_to_fit_wrapped_body_text(qtbot):
+    """Reproduces a real report: the bubble was too short for its own body
+    text once it needed several wrapped lines, clipping the last line or
+    so. Root cause: _reposition_bubble relied on QWidget.adjustSize(),
+    which uses sizeHint() -- and sizeHint() for a layout containing a
+    word-wrapped QLabel computes height for the layout's UNCONSTRAINED
+    preferred width, not the bubble's actual setFixedWidth(280). Verified
+    empirically: for this body text, QLabel.heightForWidth(262) (the
+    label's real, narrower content width) returns more than the label's
+    actual rendered height was under the old code -- the label was
+    genuinely too short for its own wrapped text, not just visually
+    cramped."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+
+    host = QMainWindow()
+    host.resize(1820, 1068)
+    target = QPushButton("target", host)
+    target.setGeometry(42, 56, 1778, 946)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+    body = ("Adding more data: drop a product in the middle of a graph to "
+            "overlay it there, or near its top/bottom edge (watch for the "
+            "blue highlight) to stack it as a new plot in this panel.")
+    mark.show_for(target, "Adding more data", body)
+
+    needed = mark._body_label.heightForWidth(mark._body_label.width())
+    assert mark._body_label.height() >= needed, (
+        f"body label clipped: rendered height={mark._body_label.height()}, "
+        f"needed={needed}")
+
+
 def test_esc_emits_skip_requested(qtbot):
     from SciQLop.components.onboarding.ui.coach_mark import CoachMark
 

@@ -24,7 +24,17 @@ CATALOGS_STEPS: list[TourStep] = [
         step_id="add_event",
         title="Label a time interval",
         body="Select a catalog, then click 'Add Event' to label a time interval.",
-        resolver=targets.resolve_catalog_tree,
+        # The catalog tree (select a catalog) and the Add Event button --
+        # part of the event table's toolbar, on the OTHER side of the
+        # browser -- are two separate widgets. Targeting just the tree
+        # (the original fix for 72a61c53's abort-the-whole-tour bug --
+        # the tree is unconditional, the button is hidden until a catalog
+        # is selected) spotlighted only half of what this tip describes,
+        # leaving the Add Event button dimmed and unreachable behind the
+        # coach mark. The whole browser widget is just as unconditional
+        # (constructed once in mainwindow.py) and its cutout naturally
+        # covers both halves.
+        resolver=targets.resolve_catalogs_browser_widget,
     ),
     TourStep(
         step_id="overlay_catalog",
