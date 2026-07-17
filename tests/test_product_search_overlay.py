@@ -162,3 +162,37 @@ class TestProductSearchOverlaySmartSearch:
 
         mock_query.assert_not_called()
         overlay._filter_model.set_external_scores.assert_not_called()
+
+    def test_smart_search_scores_not_applied_when_overlay_destroyed(self, qtbot):
+        from PySide6.QtCore import QThreadPool
+        from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
+        import SciQLop.components.plotting.ui.product_search_overlay as overlay_mod
+
+        overlay = ProductSearchOverlay()
+        qtbot.addWidget(overlay)
+        overlay._filter_model = MagicMock()
+
+        # Run the QRunnable synchronously on this thread instead of a real
+        # worker thread, so we can assert directly that its run() body never
+        # lets an exception escape -- Qt's thread pool would otherwise
+        # swallow it silently, which is exactly the failure mode the
+        # shiboken6.isValid guard is meant to prevent from ever reaching a
+        # real destroyed QObject.
+        errors = []
+
+        def run_inline(runnable):
+            try:
+                runnable.run()
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch.object(overlay_mod.smart_search, "is_enabled", return_value=True), \
+             patch.object(overlay_mod.smart_search, "query", return_value={"a": 99.0}) as mock_query, \
+             patch.object(overlay_mod.shiboken6, "isValid", return_value=False), \
+             patch.object(QThreadPool.globalInstance(), "start", side_effect=run_inline):
+            overlay._search_box.setText("mms fgm")
+            qtbot.wait(overlay._debounce.interval() + 50)
+
+        assert errors == []
+        mock_query.assert_called_once_with("products", "mms fgm")
+        overlay._filter_model.set_external_scores.assert_not_called()

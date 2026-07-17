@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtCore import Signal, Qt, QModelIndex, QStringListModel, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QListView, QLabel,
@@ -151,12 +152,14 @@ class ProductSearchOverlay(QWidget):
     def _dispatch_smart_search(self, text: str) -> None:
         from PySide6.QtCore import QThreadPool, QRunnable
 
+        overlay = self
         emit_ready = self._smart_search_scores_ready.emit
 
         class _QueryTask(QRunnable):
             def run(self):
                 scores = smart_search.query("products", text)
-                emit_ready(scores)
+                if shiboken6.isValid(overlay):
+                    emit_ready(scores)
 
         QThreadPool.globalInstance().start(_QueryTask())
 
