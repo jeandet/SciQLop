@@ -139,15 +139,20 @@ def test_query_returns_empty_dict_when_disabled(registry):
 
 
 def test_rapid_notify_changed_burst_submits_exactly_one_reindex(registry, jobs_backend, qtbot):
+    # Counts submissions via job_added rather than a post-hoc list_jobs()
+    # lookup: completed function jobs are now pruned (forget_job), so by the
+    # time this test's final wait() elapses the reindex job may already be
+    # done and forgotten -- list_jobs() would then undercount.
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     registry._enabled = True
+    job_ids = []
+    jobs_backend.job_added.connect(job_ids.append)
     for _ in range(5):
         registry.notify_changed("products")
         qtbot.wait(5)  # well under the 20ms debounce_ms configured on `registry`
     qtbot.wait(60)  # past the debounce window, no further notify_changed calls
-    jobs = [j for j in jobs_backend.list_jobs() if j["name"] == "Smart search: reindex products"]
-    assert len(jobs) == 1
+    assert len(job_ids) == 1
 
 
 def test_query_returns_cosine_scores(registry, qtbot):
@@ -168,3 +173,22 @@ def test_query_returns_cosine_scores(registry, qtbot):
 
     assert scores["a"] == pytest.approx(100.0)
     assert scores["b"] == pytest.approx(0.0)
+
+
+def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend, qtbot):
+    domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
+    registry.register_domain(domain)
+    fake_model = MagicMock()
+    fake_model.embed.side_effect = lambda texts: iter([np.array([1.0, 0.0]) for _ in texts])
+    job_ids = []
+    jobs_backend.job_added.connect(job_ids.append)
+
+    with patch.object(model_fetch, "download_model", return_value=None), \
+         patch.object(model_fetch, "load_model", return_value=fake_model), \
+         patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
+        registry.set_enabled(True)
+        qtbot.waitUntil(lambda: registry.is_enabled(), timeout=5000)
+        qtbot.waitUntil(lambda: registry._domains["products"].matrix is not None, timeout=5000)
+
+    assert len(job_ids) == 2  # the enable job, then the auto-triggered reindex job
+    assert all(job_id not in jobs_backend._futures for job_id in job_ids)

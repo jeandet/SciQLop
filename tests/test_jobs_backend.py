@@ -332,6 +332,23 @@ def test_function_jobs_are_not_persisted_across_a_restart(function_backend, tmp_
     restarted._executor.shutdown(wait=True, cancel_futures=True)
 
 
+def test_forget_job_removes_completed_function_job(function_backend, qtbot):
+    job_id = function_backend.submit_function(_add, (1, 1), "add job")
+    qtbot.waitUntil(lambda: function_backend.job_status(job_id)["status"] == "done", timeout=5000)
+    function_backend.job_result(job_id)
+
+    function_backend.forget_job(job_id)
+
+    ids = {j["id"] for j in function_backend.list_jobs()}
+    assert job_id not in ids
+    with pytest.raises(KeyError):
+        function_backend.job_status(job_id)
+
+
+def test_forget_job_on_unknown_id_does_not_raise(function_backend):
+    function_backend.forget_job("does-not-exist")
+
+
 def test_cancel_function_job_no_cancelled_error(function_backend):
     """Regression test for _on_function_done/_function_job_status: for a
     cancelled future, Future.exception() raises CancelledError instead of

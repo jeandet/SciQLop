@@ -102,6 +102,16 @@ class JobsBackend(QObject):
     def job_result(self, job_id: str) -> Any:
         return self._futures[job_id].result()
 
+    def forget_job(self, job_id: str) -> None:
+        """Drops a completed function job's bookkeeping (Future incl. its
+        return value, name, submitted_at, last status). Scoped to
+        submit_function's dicts only -- submit_job's `_jobs` are meant to be
+        listed/reconciled across restarts and must never be pruned here."""
+        self._futures.pop(job_id, None)
+        self._function_job_names.pop(job_id, None)
+        self._function_job_submitted_at.pop(job_id, None)
+        self._last_status.pop(job_id, None)
+
     def _function_job_status(self, job_id: str) -> dict:
         future = self._futures[job_id]
         if future.done():
