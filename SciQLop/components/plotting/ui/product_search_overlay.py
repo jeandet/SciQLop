@@ -9,6 +9,7 @@ from SciQLop.core.mime import decode_mime
 from SciQLop.core.ui import Metrics
 from SciQLop.core.ui.tooltips import rich_tooltip
 from SciQLop.components import sciqlop_logging
+from SciQLop.components import smart_search
 
 log = sciqlop_logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class ProductSearchOverlay(QWidget):
     """Overlay shown on empty plot panels with a product search box."""
 
     product_selected = Signal(list)
+    _smart_search_scores_ready = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -123,6 +125,7 @@ class ProductSearchOverlay(QWidget):
         self._result_list.activated.connect(self._on_result_clicked)
         self._filter_model.layoutChanged.connect(self._on_filter_ready)
         self._filter_model.modelReset.connect(self._on_filter_ready)
+        self._smart_search_scores_ready.connect(self._apply_smart_search_scores)
 
     def _show_results(self, show: bool):
         self._result_list.setVisible(show)
@@ -142,6 +145,23 @@ class ProductSearchOverlay(QWidget):
         if len(text) < _MIN_QUERY_LENGTH:
             return
         self._filter_model.set_query(QueryParser.parse(text))
+        if smart_search.is_enabled():
+            self._dispatch_smart_search(text)
+
+    def _dispatch_smart_search(self, text: str) -> None:
+        from PySide6.QtCore import QThreadPool, QRunnable
+
+        emit_ready = self._smart_search_scores_ready.emit
+
+        class _QueryTask(QRunnable):
+            def run(self):
+                scores = smart_search.query("products", text)
+                emit_ready(scores)
+
+        QThreadPool.globalInstance().start(_QueryTask())
+
+    def _apply_smart_search_scores(self, scores: dict) -> None:
+        self._filter_model.set_external_scores(scores)
 
     def _on_filter_ready(self):
         text = self._search_box.text().strip()

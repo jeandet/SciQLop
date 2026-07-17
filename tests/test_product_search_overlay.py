@@ -122,3 +122,43 @@ class TestTimeSyncPanelOverlay:
 
         qtbot.waitUntil(lambda: panel._search_overlay is None, timeout=1000)
         assert panel._search_overlay is None
+
+
+class TestProductSearchOverlaySmartSearch:
+    def test_smart_search_scores_applied_when_enabled(self, qtbot):
+        from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
+        import SciQLop.components.plotting.ui.product_search_overlay as overlay_mod
+
+        overlay = ProductSearchOverlay()
+        qtbot.addWidget(overlay)
+        overlay._filter_model = MagicMock()
+
+        with patch.object(overlay_mod.smart_search, "is_enabled", return_value=True), \
+             patch.object(overlay_mod.smart_search, "query", return_value={"a": 99.0}) as mock_query:
+            overlay._search_box.setText("mms fgm")
+            qtbot.wait(overlay._debounce.interval() + 50)
+            # Wait on the *final* observable effect (set_external_scores), not on
+            # mock_query.called -- Mock sets .called synchronously the instant
+            # query() is invoked, before the worker thread has even reached the
+            # emit_ready() line, so waiting on .called alone would race the
+            # queued cross-thread signal delivery.
+            qtbot.waitUntil(lambda: overlay._filter_model.set_external_scores.called, timeout=2000)
+
+        mock_query.assert_called_once_with("products", "mms fgm")
+        overlay._filter_model.set_external_scores.assert_called_once_with({"a": 99.0})
+
+    def test_smart_search_not_queried_when_disabled(self, qtbot):
+        from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
+        import SciQLop.components.plotting.ui.product_search_overlay as overlay_mod
+
+        overlay = ProductSearchOverlay()
+        qtbot.addWidget(overlay)
+        overlay._filter_model = MagicMock()
+
+        with patch.object(overlay_mod.smart_search, "is_enabled", return_value=False), \
+             patch.object(overlay_mod.smart_search, "query") as mock_query:
+            overlay._search_box.setText("mms fgm")
+            qtbot.wait(overlay._debounce.interval() + 50)
+
+        mock_query.assert_not_called()
+        overlay._filter_model.set_external_scores.assert_not_called()
