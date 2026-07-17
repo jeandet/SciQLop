@@ -56,9 +56,19 @@ def is_enabled() -> bool:
 
 
 def set_enabled(enabled: bool, on_ready=None, on_error=None) -> None:
-    _get_registry().set_enabled(enabled, on_ready=on_ready, on_error=on_error)
-    with SmartSearchSettings() as settings:
-        settings.enabled = enabled
+    if not enabled:
+        _get_registry().set_enabled(False, on_ready=on_ready, on_error=on_error)
+        with SmartSearchSettings() as settings:
+            settings.enabled = False
+        return
+
+    def _persist_then_ready() -> None:
+        with SmartSearchSettings() as settings:
+            settings.enabled = True
+        if on_ready is not None:
+            on_ready()
+
+    _get_registry().set_enabled(True, on_ready=_persist_then_ready, on_error=on_error)
 
 
 def available_models() -> list:

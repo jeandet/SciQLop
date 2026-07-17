@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 
@@ -8,6 +8,12 @@ def reset_facade_singleton():
     facade._registry = None
     yield
     facade._registry = None
+
+
+@pytest.fixture
+def tmp_config_dir(tmp_path):
+    with patch("SciQLop.components.settings.backend.entry.SCIQLOP_CONFIG_DIR", str(tmp_path)):
+        yield tmp_path
 
 
 def test_is_available_reflects_fastembed_importability():
@@ -48,3 +54,61 @@ def test_get_model_and_set_model_read_and_write_settings(tmp_path, monkeypatch):
         assert get_model() == "BAAI/bge-small-en-v1.5"
         set_model("sentence-transformers/all-MiniLM-L6-v2")
         assert get_model() == "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def test_set_enabled_true_persists_only_after_registry_reports_ready(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    def fake_set_enabled(enabled, on_ready=None, on_error=None):
+        on_ready()
+
+    fake_registry = MagicMock()
+    fake_registry.set_enabled.side_effect = fake_set_enabled
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    caller_on_ready = MagicMock()
+    caller_on_error = MagicMock()
+    facade.set_enabled(True, on_ready=caller_on_ready, on_error=caller_on_error)
+
+    assert SmartSearchSettings().enabled is True
+    caller_on_ready.assert_called_once_with()
+    caller_on_error.assert_not_called()
+
+
+def test_set_enabled_true_does_not_persist_when_registry_reports_error(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    error = RuntimeError("model download failed")
+
+    def fake_set_enabled(enabled, on_ready=None, on_error=None):
+        on_error(error)
+
+    fake_registry = MagicMock()
+    fake_registry.set_enabled.side_effect = fake_set_enabled
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    caller_on_ready = MagicMock()
+    caller_on_error = MagicMock()
+    facade.set_enabled(True, on_ready=caller_on_ready, on_error=caller_on_error)
+
+    assert SmartSearchSettings().enabled is False
+    caller_on_ready.assert_not_called()
+    caller_on_error.assert_called_once_with(error)
+
+
+def test_set_enabled_false_persists_immediately(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    with SmartSearchSettings() as settings:
+        settings.enabled = True
+
+    fake_registry = MagicMock()
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    facade.set_enabled(False)
+
+    fake_registry.set_enabled.assert_called_once_with(False, on_ready=None, on_error=None)
+    assert SmartSearchSettings().enabled is False
