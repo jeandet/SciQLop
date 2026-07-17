@@ -15,6 +15,11 @@ def _boom():
     raise ValueError("kaboom")
 
 
+def _slow_func():
+    import time
+    time.sleep(10)
+
+
 @pytest.fixture
 def function_backend(qtbot, tmp_path):
     from SciQLop.components.jobs.backend.jobs_backend import JobsBackend
@@ -313,3 +318,29 @@ def test_function_jobs_are_not_persisted_across_a_restart(function_backend, tmp_
     ids = {j["id"] for j in restarted.list_jobs()}
     assert job_id not in ids
     restarted._executor.shutdown(wait=True, cancel_futures=True)
+
+
+def test_cancel_function_job_no_cancelled_error(function_backend, qtbot):
+    """Cancelled function jobs should not raise CancelledError on status check.
+
+    When a function job future is cancelled, future.exception() would raise
+    CancelledError instead of returning it as a value. This test verifies that
+    job_status() and list_jobs() handle cancelled futures gracefully.
+    """
+    # Fill queue to increase chance cancel happens before execution starts
+    for _ in range(4):
+        function_backend.submit_function(_slow_func, (), "filler")
+
+    job_id = function_backend.submit_function(_slow_func, (), "to cancel")
+    function_backend.cancel_job(job_id)
+
+    # The core assertion: job_status() must not raise CancelledError
+    status = function_backend.job_status(job_id)
+
+    # If cancel succeeded, status must be "crashed"
+    if function_backend._futures[job_id].cancelled():
+        assert status["status"] == "crashed"
+
+    # list_jobs() must also not raise and must include this job
+    jobs = function_backend.list_jobs()
+    assert any(j["id"] == job_id for j in jobs)

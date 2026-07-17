@@ -92,7 +92,10 @@ class JobsBackend(QObject):
         return job_id
 
     def _on_function_done(self, job_id: str, future: Future) -> None:
-        status = "crashed" if future.exception() is not None else "done"
+        if future.cancelled():
+            status = "crashed"
+        else:
+            status = "crashed" if future.exception() is not None else "done"
         self._last_status[job_id] = status
         self.job_status_changed.emit(job_id, status)
 
@@ -102,7 +105,10 @@ class JobsBackend(QObject):
     def _function_job_status(self, job_id: str) -> dict:
         future = self._futures[job_id]
         if future.done():
-            status = "crashed" if future.exception() is not None else "done"
+            if future.cancelled():
+                status = "crashed"
+            else:
+                status = "crashed" if future.exception() is not None else "done"
         else:
             status = "running"
         return {
