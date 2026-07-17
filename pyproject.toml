@@ -65,7 +65,8 @@ dependencies = [
     "uv",
     "tomli_w",
     "pyyaml",
-    "psutil"
+    "psutil",
+    "fastembed"
 ]
 [project.urls]
 homepage = "https://github.com/SciQLop/SciQLop"
