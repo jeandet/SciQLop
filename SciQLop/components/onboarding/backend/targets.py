@@ -119,5 +119,10 @@ def resolve_any_plot_with_data(main_window, context) -> QWidget | None:
 
 
 def resolve_settings_category_list(main_window, context) -> QListView | None:
-    views = main_window.settings_panel.findChildren(QListView)
-    return views[0] if views else None
+    # Not findChildren(QListView)[0]: a setting's own dropdown delegate
+    # (e.g. "Color Palette", a QComboBox) owns an internal QListView for
+    # its popup -- a real, findable QObject even while closed, with a
+    # leftover default geometry unrelated to anything on screen. Find
+    # the intended widget by its object name, not "whichever QListView
+    # happens to be found first".
+    return main_window.settings_panel.findChild(QListView, "SettingsCategories")

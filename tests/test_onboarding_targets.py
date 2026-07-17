@@ -181,3 +181,24 @@ def test_resolve_settings_category_list_finds_a_list_view(main_window):
     from PySide6.QtWidgets import QListView
     result = resolve_settings_category_list(main_window, {})
     assert isinstance(result, QListView)
+
+
+def test_resolve_settings_category_list_ignores_a_combobox_delegates_popup_view(main_window):
+    """Real report: the browse_categories coach mark highlighted a random
+    rectangle unrelated to any visible widget. Root cause: the "Color
+    Palette" setting's dropdown delegate is a QComboBox, which
+    internally owns its own QListView for its popup -- a real, findable
+    QObject even while the popup itself is closed, with a leftover
+    (0, 0, 640, 480) default geometry that has nothing to do with any
+    on-screen position. findChildren(QListView)[0] is not guaranteed to
+    return SettingsCategories (the actual, intended target) over this
+    unrelated internal widget -- it must be found by identity, not by
+    "first QListView in the panel"."""
+    from SciQLop.components.onboarding.backend.targets import resolve_settings_category_list
+    from SciQLop.components.settings.ui.setting_panel import SettingsCategories
+
+    main_window.settings_panel.show()
+    main_window.settings_panel._refresh()
+
+    result = resolve_settings_category_list(main_window, {})
+    assert isinstance(result, SettingsCategories)
