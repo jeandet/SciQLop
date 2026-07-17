@@ -96,3 +96,53 @@ class SmartSearchRegistry(QObject):
         del self._job_to_domain[job_id]
         if state.dirty:
             self._trigger_reindex(domain_name)
+
+    # --- resource gate ----------------------------------------------------------
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def set_enabled(self, enabled: bool, on_ready=None, on_error=None) -> None:
+        if not enabled:
+            self._enabled = False
+            self._query_model = None
+            return
+        job_id = self._jobs_backend.submit_function(
+            model_fetch.download_model, (self._model_name, self._cache_dir),
+            "Loading smart-search model...")
+        self._pending_enable = (job_id, on_ready, on_error)
+
+    def _handle_enable_job(self, status: str) -> None:
+        job_id, on_ready, on_error = self._pending_enable
+        self._pending_enable = None
+        if status == "done":
+            try:
+                self._jobs_backend.job_result(job_id)
+                self._query_model = model_fetch.load_model(self._model_name, self._cache_dir)
+            except Exception as exc:
+                if on_error is not None:
+                    on_error(exc)
+                return
+            self._enabled = True
+            for name in list(self._domains):
+                self._trigger_reindex(name)
+            if on_ready is not None:
+                on_ready()
+        elif status == "crashed" and on_error is not None:
+            try:
+                self._jobs_backend.job_result(job_id)
+            except Exception as exc:
+                on_error(exc)
+
+    # --- query -------------------------------------------------------------
+    def query(self, domain_name: str, text: str) -> dict:
+        if not self._enabled or self._query_model is None:
+            return {}
+        state = self._domains.get(domain_name)
+        if state is None or state.matrix is None:
+            return {}
+        query_vec = next(self._query_model.embed([text]))
+        norms = np.linalg.norm(state.matrix, axis=1) * np.linalg.norm(query_vec)
+        norms[norms == 0] = 1.0
+        cosine = (state.matrix @ query_vec) / norms
+        return {path_key: float(max(0.0, sim)) * 100.0
+                for path_key, sim in zip(state.path_keys, cosine)}
