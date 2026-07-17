@@ -76,8 +76,10 @@ GETTING_STARTED = Tour(
             step_id="shortcut_tip",
             title="One-click shortcut",
             body=(
-                "Tip: next time, right-click any product → '+ New panel' "
-                "to create a panel and plot it in one click."
+                "Tip: right-click any product for more ways to plot it — "
+                "overlay it on an existing plot, add it as a new plot in "
+                "an existing panel, or send it to a brand-new panel, all "
+                "without dragging."
             ),
             resolver=targets.resolve_products_tree_widget,
         ),

@@ -15,26 +15,24 @@ CATALOGS_STEPS: list[TourStep] = [
         completion=completions.dock_visible("Catalog Browser"),
     ),
     TourStep(
-        step_id="create_catalog",
-        title="Create a catalog",
-        body="Right-click a provider here to create a new catalog.",
+        step_id="meet_providers",
+        title="Three places catalogs come from",
+        body=(
+            "'My Catalogs' is your own local library. 'Shared' is "
+            "collaborative catalogs other people are editing with you. "
+            "'Remote' mirrors read-only catalogs from external services "
+            "like AMDA."
+        ),
         resolver=targets.resolve_catalog_tree,
     ),
     TourStep(
-        step_id="add_event",
-        title="Label a time interval",
-        body="Select a catalog, then click 'Add Event' to label a time interval.",
-        # The catalog tree (select a catalog) and the Add Event button --
-        # part of the event table's toolbar, on the OTHER side of the
-        # browser -- are two separate widgets. Targeting just the tree
-        # (the original fix for 72a61c53's abort-the-whole-tour bug --
-        # the tree is unconditional, the button is hidden until a catalog
-        # is selected) spotlighted only half of what this tip describes,
-        # leaving the Add Event button dimmed and unreachable behind the
-        # coach mark. The whole browser widget is just as unconditional
-        # (constructed once in mainwindow.py) and its cutout naturally
-        # covers both halves.
-        resolver=targets.resolve_catalogs_browser_widget,
+        step_id="create_catalog",
+        title="Pick or create a catalog",
+        body=(
+            "Select an existing catalog to browse its events, or "
+            "right-click 'My Catalogs' to create your own."
+        ),
+        resolver=targets.resolve_catalog_tree,
     ),
     TourStep(
         step_id="overlay_catalog",
@@ -47,5 +45,22 @@ CATALOGS_STEPS: list[TourStep] = [
         poll=True,
         timeout_s=15.0,
         timeout_message=_NO_PANEL_MESSAGE,
+    ),
+    TourStep(
+        step_id="create_event",
+        title="Label a time interval",
+        body=(
+            "The quickest way to label an interval: switch this panel to "
+            "'Edit' mode (bottom toolbar, or right-click → Catalogs → "
+            "Mode), then hold Shift, click to start, and click again to "
+            "finish drawing a new event on the overlaid catalog."
+        ),
+        # Targets the whole panel, not just the plot or just the mode
+        # dropdown in its bottom chrome -- the tip describes using both
+        # (switch mode in the chrome, then draw on the plot itself), and
+        # a resolver covering only one of them would dim/block the other,
+        # the same class of bug fixed for add_event's old button-vs-tree
+        # split (see resolve_catalogs_browser_widget's own history).
+        resolver=targets.resolve_panel_widget,
     ),
 ]

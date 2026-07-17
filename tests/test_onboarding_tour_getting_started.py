@@ -1,9 +1,10 @@
-def test_getting_started_has_eleven_steps_in_order():
+def test_getting_started_has_twelve_steps_in_order():
     from SciQLop.components.onboarding.backend.tour_getting_started import GETTING_STARTED
     assert [s.step_id for s in GETTING_STARTED.steps] == [
         "create_panel", "open_products", "plot_product",
         "overlay_vs_new_subplot", "shortcut_tip",
-        "open_catalogs", "create_catalog", "add_event", "overlay_catalog",
+        "open_catalogs", "meet_providers", "create_catalog",
+        "overlay_catalog", "create_event",
         "open_settings", "browse_categories",
     ]
 
@@ -47,7 +48,8 @@ def test_tip_only_steps_have_no_completion():
     by_id = {s.step_id: s for s in GETTING_STARTED.steps}
     no_completion_steps = {
         "overlay_vs_new_subplot", "shortcut_tip",
-        "create_catalog", "add_event", "overlay_catalog", "browse_categories",
+        "meet_providers", "create_catalog", "overlay_catalog",
+        "create_event", "browse_categories",
     }
     has_completion_steps = {
         "create_panel", "open_products", "plot_product",
