@@ -80,6 +80,8 @@ def start_sciqlop():
     _tracing.set_thread_name("Qt-Main")
     from SciQLop.components.theming.icons import flush_deferred_icons
     flush_deferred_icons()
+    from SciQLop.components.products import register_smart_search_domain
+    register_smart_search_domain()
     sciqlop_event_loop()
 
     from SciQLop.core.ui.mainwindow import SciQLopMainWindow
