@@ -1,6 +1,8 @@
 """JobsBackend needs a QApplication (QObject/Signal), so tests take qtbot."""
 import os
 import time
+from concurrent.futures import CancelledError
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,9 +17,19 @@ def _boom():
     raise ValueError("kaboom")
 
 
-def _slow_func():
-    import time
-    time.sleep(10)
+class _FakeCancelledFuture:
+    """Stand-in for a concurrent.futures.Future that ProcessPoolExecutor
+    cancelled before it started running: cancelled()/done() are both True,
+    and exception() raises CancelledError rather than returning it."""
+
+    def cancelled(self):
+        return True
+
+    def done(self):
+        return True
+
+    def exception(self):
+        raise CancelledError()
 
 
 @pytest.fixture
@@ -320,27 +332,24 @@ def test_function_jobs_are_not_persisted_across_a_restart(function_backend, tmp_
     restarted._executor.shutdown(wait=True, cancel_futures=True)
 
 
-def test_cancel_function_job_no_cancelled_error(function_backend, qtbot):
-    """Cancelled function jobs should not raise CancelledError on status check.
+def test_cancel_function_job_no_cancelled_error(function_backend):
+    """Regression test for _on_function_done/_function_job_status: for a
+    cancelled future, Future.exception() raises CancelledError instead of
+    returning it, so both call sites must check future.cancelled() first.
 
-    When a function job future is cancelled, future.exception() would raise
-    CancelledError instead of returning it as a value. This test verifies that
-    job_status() and list_jobs() handle cancelled futures gracefully.
+    A fake Future makes this deterministic. Racing a real ProcessPoolExecutor
+    to cancel a job before it starts running is not reliable (empirically the
+    future was actually cancelled in only ~1/8 runs), and the sleep-based
+    filler jobs it required added a real ~10s tax to every test run.
     """
-    # Fill queue to increase chance cancel happens before execution starts
-    for _ in range(4):
-        function_backend.submit_function(_slow_func, (), "filler")
+    job_id = "cancelled-job"
+    fake_future = _FakeCancelledFuture()
+    function_backend._futures[job_id] = fake_future
+    function_backend._function_job_names[job_id] = "to cancel"
+    function_backend._function_job_submitted_at[job_id] = datetime.now().isoformat()
 
-    job_id = function_backend.submit_function(_slow_func, (), "to cancel")
-    function_backend.cancel_job(job_id)
+    status = function_backend._function_job_status(job_id)
+    assert status["status"] == "crashed"
 
-    # The core assertion: job_status() must not raise CancelledError
-    status = function_backend.job_status(job_id)
-
-    # If cancel succeeded, status must be "crashed"
-    if function_backend._futures[job_id].cancelled():
-        assert status["status"] == "crashed"
-
-    # list_jobs() must also not raise and must include this job
-    jobs = function_backend.list_jobs()
-    assert any(j["id"] == job_id for j in jobs)
+    function_backend._on_function_done(job_id, fake_future)
+    assert function_backend._last_status[job_id] == "crashed"
