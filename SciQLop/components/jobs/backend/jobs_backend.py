@@ -3,14 +3,16 @@ survive SciQLop closing or crashing (like `nohup ... &`), plus reconciliation
 of job records from disk and Qt signals for a future UI to subscribe to."""
 from __future__ import annotations
 
+import multiprocessing
 import os
 import shlex
 import signal
 import subprocess
 import uuid
+from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List
 
 from PySide6.QtCore import QObject, Signal
 
@@ -42,6 +44,10 @@ class JobsBackend(QObject):
         self._workspace_dir_getter = workspace_dir_getter
         self._jobs: Dict[str, Job] = {}
         self._last_status: Dict[str, str] = {}
+        self._executor = ProcessPoolExecutor(mp_context=multiprocessing.get_context("spawn"))
+        self._futures: Dict[str, Future] = {}
+        self._function_job_names: Dict[str, str] = {}
+        self._function_job_submitted_at: Dict[str, str] = {}
         self._reconcile()
 
     def _reconcile(self) -> None:
@@ -74,6 +80,37 @@ class JobsBackend(QObject):
         self.job_added.emit(job_id)
         return job_id
 
+    def submit_function(self, fn: Callable, args: tuple, name: str) -> str:
+        job_id = uuid.uuid4().hex[:12]
+        future = self._executor.submit(fn, *args)
+        self._futures[job_id] = future
+        self._function_job_names[job_id] = name
+        self._function_job_submitted_at[job_id] = datetime.now().isoformat()
+        self._last_status[job_id] = "running"
+        future.add_done_callback(lambda f, jid=job_id: self._on_function_done(jid, f))
+        self.job_added.emit(job_id)
+        return job_id
+
+    def _on_function_done(self, job_id: str, future: Future) -> None:
+        status = "crashed" if future.exception() is not None else "done"
+        self._last_status[job_id] = status
+        self.job_status_changed.emit(job_id, status)
+
+    def job_result(self, job_id: str) -> Any:
+        return self._futures[job_id].result()
+
+    def _function_job_status(self, job_id: str) -> dict:
+        future = self._futures[job_id]
+        if future.done():
+            status = "crashed" if future.exception() is not None else "done"
+        else:
+            status = "running"
+        return {
+            "id": job_id, "name": self._function_job_names[job_id], "command": None,
+            "submitted_at": self._function_job_submitted_at[job_id], "status": status,
+            "exit_code": None, "finished_at": None, "log_tail": "",
+        }
+
     def _status_dict(self, job: Job) -> dict:
         st = compute_status(job.marker_path, job.pid)
         previous = self._last_status.get(job.id)
@@ -88,13 +125,19 @@ class JobsBackend(QObject):
         }
 
     def job_status(self, job_id: str) -> dict:
+        if job_id in self._futures:
+            return self._function_job_status(job_id)
         job = self._jobs[job_id]
         return self._status_dict(job)
 
     def list_jobs(self) -> List[dict]:
-        return [self._status_dict(job) for job in self._jobs.values()]
+        return [self._status_dict(job) for job in self._jobs.values()] + \
+               [self._function_job_status(jid) for jid in self._futures]
 
     def cancel_job(self, job_id: str) -> None:
+        if job_id in self._futures:
+            self._futures[job_id].cancel()
+            return
         job = self._jobs[job_id]
         try:
             os.kill(job.pid, signal.SIGTERM)

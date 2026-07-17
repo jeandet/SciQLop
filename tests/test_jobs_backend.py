@@ -4,6 +4,24 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+
+def _add(a, b):
+    return a + b
+
+
+def _boom():
+    raise ValueError("kaboom")
+
+
+@pytest.fixture
+def function_backend(qtbot, tmp_path):
+    from SciQLop.components.jobs.backend.jobs_backend import JobsBackend
+    backend = JobsBackend(workspace_dir_getter=lambda: str(tmp_path))
+    yield backend
+    backend._executor.shutdown(wait=True, cancel_futures=True)
+
 
 def _backend(qtbot, tmp_path):
     from SciQLop.components.jobs.backend.jobs_backend import JobsBackend
@@ -241,3 +259,57 @@ def test_singleton_constructed_on_main_thread_even_when_called_from_worker(qtbot
 
     assert "backend" in result, "construction did not complete from worker thread"
     assert result["backend"].thread() == app.thread()
+
+
+def test_submit_function_returns_result(function_backend):
+    job_id = function_backend.submit_function(_add, (2, 3), "add job")
+    assert function_backend.job_result(job_id) == 5
+
+
+def test_submit_function_emits_job_added(function_backend, qtbot):
+    with qtbot.waitSignal(function_backend.job_added, timeout=2000) as blocker:
+        job_id = function_backend.submit_function(_add, (1, 1), "add job")
+    assert blocker.args == [job_id]
+
+
+def test_submit_function_emits_done_status_change(function_backend, qtbot):
+    with qtbot.waitSignal(function_backend.job_status_changed, timeout=5000) as blocker:
+        job_id = function_backend.submit_function(_add, (1, 1), "add job")
+    assert blocker.args == [job_id, "done"]
+    assert function_backend.job_status(job_id)["status"] == "done"
+
+
+def test_submit_function_crash_reports_crashed_status(function_backend, qtbot):
+    with qtbot.waitSignal(function_backend.job_status_changed, timeout=5000) as blocker:
+        job_id = function_backend.submit_function(_boom, (), "boom job")
+    assert blocker.args == [job_id, "crashed"]
+    assert function_backend.job_status(job_id)["status"] == "crashed"
+
+
+def test_job_result_reraises_function_exception(function_backend, qtbot):
+    job_id = function_backend.submit_function(_boom, (), "boom job")
+    qtbot.waitUntil(lambda: function_backend.job_status(job_id)["status"] == "crashed", timeout=5000)
+    with pytest.raises(ValueError, match="kaboom"):
+        function_backend.job_result(job_id)
+
+
+def test_list_jobs_includes_function_jobs(function_backend, qtbot):
+    job_id = function_backend.submit_function(_add, (1, 1), "add job")
+    qtbot.waitUntil(lambda: function_backend.job_status(job_id)["status"] == "done", timeout=5000)
+    ids = {j["id"] for j in function_backend.list_jobs()}
+    assert job_id in ids
+
+
+def test_function_jobs_are_not_persisted_across_a_restart(function_backend, tmp_path, qtbot):
+    """Unlike submit_job (TOML-tracked, reconciled on next construction),
+    submit_function jobs write no on-disk record -- there's nothing to
+    resume if SciQLop closes mid-index, which is the desired behavior."""
+    job_id = function_backend.submit_function(_add, (1, 1), "add job")
+    qtbot.waitUntil(lambda: function_backend.job_status(job_id)["status"] == "done", timeout=5000)
+    assert list((tmp_path / ".sciqlop-jobs").glob("*.toml")) == []
+
+    from SciQLop.components.jobs.backend.jobs_backend import JobsBackend
+    restarted = JobsBackend(workspace_dir_getter=lambda: str(tmp_path))
+    ids = {j["id"] for j in restarted.list_jobs()}
+    assert job_id not in ids
+    restarted._executor.shutdown(wait=True, cancel_futures=True)
