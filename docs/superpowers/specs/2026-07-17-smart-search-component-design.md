@@ -84,13 +84,25 @@ code move:
    survives a restart) is untouched and serves a genuinely different need
    (long user-facing batch jobs). Both share `JobsBackend`'s existing
    `_jobs` tracking and `job_added`/`job_status_changed` signals.
-9. **Model download reuses `speasy.core.any_files.any_loc_open(url, cache_remote_files=True)`**
-   for each required model file (weights/tokenizer/config) instead of
-   `fastembed`'s own downloader — gives disk caching, `last-modified`
-   revalidation, and offline support (`prefer_cache`) for free. (Whether
-   `fastembed.TextEmbedding` accepts a pre-populated local cache directory
-   so it never touches the network itself needs verifying against the
-   installed `fastembed` version during implementation — not assumed here.)
+9. **Model download uses `fastembed`/`huggingface_hub`'s own `snapshot_download`
+   caching, not a hand-rolled fetch.** Originally planned to route model-file
+   downloads through `speasy.core.any_files.any_loc_open` for proxy-aware
+   caching, but verified (by installing `fastembed==0.8.0` and reading
+   `fastembed/common/model_management.py`) that `TextEmbedding(model_name,
+   cache_dir=..., local_files_only=...)` is real and delegates to
+   `huggingface_hub.snapshot_download(repo_id, cache_dir, local_files_only)`
+   — which writes HF's own content-addressed snapshot layout
+   (`models--<org>--<repo>/snapshots/<rev>/...`). Reimplementing that layout
+   by hand via `any_loc_open` would mean faithfully reproducing an internal
+   `huggingface_hub` cache format that can change across versions, for no
+   real gain: the proxy-awareness `any_loc_open` was chasing is already
+   covered, since `huggingface_hub` (via `requests`) honors standard
+   `HTTP_PROXY`/`HTTPS_PROXY` env vars, and `sciqlop_app.py` already calls
+   `apply_qt_application_proxy()` before anything else runs. So `model_fetch.py`
+   is a thin wrapper: `TextEmbedding(model_name, cache_dir=<our dir>)` once
+   (the download job), then `TextEmbedding(model_name, cache_dir=<same dir>,
+   local_files_only=True)` for every subsequent load (query embedding,
+   indexing subprocess).
 10. **The Products domain adapter lives in `components/products/`**, not
     `speasy_provider` — `ProductsModel` is core infrastructure fed by
     multiple sources, not speasy-specific.
@@ -133,7 +145,8 @@ components/smart_search/
 │                         #   the function submitted via JobsBackend
 ├── semantic_method.py     # SemanticSearchMethod (fastembed), moved from
 │                         #   smart_search_semantic.py
-├── model_fetch.py         # any_loc_open-based model file fetch/cache
+├── model_fetch.py         # thin wrapper around TextEmbedding's own
+│                         #   cache_dir/local_files_only caching
 └── settings.py            # SmartSearchSettings ConfigEntry
 ```
 
@@ -219,12 +232,25 @@ Qt main thread, returns synchronously to the caller.
 
 ### Model download
 
-`components/smart_search/model_fetch.py` uses `speasy.core.any_files.any_loc_open(url, cache_remote_files=True, prefer_cache=...)`
-per required model file, instead of `fastembed`'s own `huggingface_hub`-based
-downloader — disk caching, `last-modified` revalidation, and offline mode
-come for free. **To verify during implementation**: whether the installed
-`fastembed` version accepts a pre-populated local cache dir /
-`local_files_only`-style flag so it never makes its own network calls.
+`components/smart_search/model_fetch.py` is a thin wrapper around
+`fastembed.TextEmbedding`'s own caching rather than a hand-rolled fetch
+(verified against the real `fastembed==0.8.0` API — see decision 9):
+
+```python
+def download_model(model_name: str, cache_dir: Path) -> None:
+    """Runs inside a JobsBackend submit_function job. Network-capable;
+    huggingface_hub honors HTTP_PROXY/HTTPS_PROXY, already set up by
+    apply_qt_application_proxy() at startup."""
+    from fastembed import TextEmbedding
+    TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
+
+def load_model(model_name: str, cache_dir: Path):
+    """Called both from the main process (query embedding) and inside the
+    index_worker subprocess (corpus embedding). Never touches the network —
+    raises if download_model() hasn't populated cache_dir yet."""
+    from fastembed import TextEmbedding
+    return TextEmbedding(model_name=model_name, cache_dir=str(cache_dir), local_files_only=True)
+```
 
 ### Products domain adapter & registration
 
@@ -301,7 +327,8 @@ extra there. `ExternalScoreOverlay` + the three filter-model hook methods +
 - `product_search_overlay.py`: scores applied via `set_external_scores`
   without blocking the GUI thread; behaves identically to today when smart
   search is disabled/unavailable.
-- Model fetch: cache hit/miss/revalidation via `any_loc_open`, offline mode.
+- Model fetch: `download_model` populates `cache_dir`; `load_model` with
+  `local_files_only=True` succeeds afterward and never touches the network.
 
 ## Non-goals (explicitly out of scope for this doc)
 
