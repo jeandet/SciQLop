@@ -82,6 +82,8 @@ def start_sciqlop():
     flush_deferred_icons()
     from SciQLop.components.products import register_smart_search_domain
     register_smart_search_domain()
+    from SciQLop.components.smart_search import initialize as initialize_smart_search
+    initialize_smart_search()
     sciqlop_event_loop()
 
     from SciQLop.core.ui.mainwindow import SciQLopMainWindow

@@ -6,6 +6,7 @@ from SciQLop.components.smart_search.registry import SmartSearchRegistry
 from SciQLop.components.smart_search.settings import AVAILABLE_MODELS, SmartSearchSettings
 
 _registry = None
+_initialized = False
 
 
 def _jobs_backend_instance():
@@ -85,3 +86,32 @@ def set_model(name: str) -> None:
         raise ValueError(f"Unknown smart-search model: {name!r}. Available: {AVAILABLE_MODELS}")
     with SmartSearchSettings() as settings:
         settings.model = name
+
+
+def _on_settings_changed(field_name: str, value) -> None:
+    if field_name != "enabled":
+        return
+    if bool(value) == is_enabled():
+        return
+    set_enabled(bool(value))
+
+
+def initialize() -> None:
+    """Call once at startup: restores persisted enable state and reacts to
+    future Settings UI toggles. The is_enabled()-equality guard in
+    _on_settings_changed prevents a reentrant loop: set_enabled()'s own
+    internal persistence write (settings.enabled = enabled, once the async
+    enable job resolves) re-fires this same signal, but by then the
+    registry's is_enabled() already matches, so the guard stops it there.
+
+    Idempotent: a second call is a no-op, so it's safe even if startup code
+    were to run this more than once (and avoids double-connecting the
+    shared, process-lifetime _notifier)."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    SmartSearchSettings._notifier.changed.connect(_on_settings_changed)
+    with SmartSearchSettings() as settings:
+        if settings.enabled:
+            set_enabled(True)

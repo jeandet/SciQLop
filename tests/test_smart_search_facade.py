@@ -16,6 +16,16 @@ def tmp_config_dir(tmp_path):
         yield tmp_path
 
 
+@pytest.fixture(autouse=True)
+def reset_initialize_state():
+    yield
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+    if facade._initialized:
+        SmartSearchSettings._notifier.changed.disconnect(facade._on_settings_changed)
+        facade._initialized = False
+
+
 def test_is_available_reflects_fastembed_importability():
     from SciQLop.components.smart_search import is_available
     assert is_available() is True  # fastembed is a mandatory dependency, always importable
@@ -112,3 +122,70 @@ def test_set_enabled_false_persists_immediately(tmp_config_dir, monkeypatch):
 
     fake_registry.set_enabled.assert_called_once_with(False, on_ready=None, on_error=None)
     assert SmartSearchSettings().enabled is False
+
+
+def test_initialize_connects_notifier_and_settings_toggle_calls_set_enabled(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    fake_registry = MagicMock()
+    fake_registry.is_enabled.return_value = False
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    facade.initialize()
+    fake_registry.set_enabled.assert_not_called()
+
+    settings = SmartSearchSettings()
+    settings.enabled = True
+    settings.save()
+
+    fake_registry.set_enabled.assert_called_once()
+    args, kwargs = fake_registry.set_enabled.call_args
+    assert args == (True,)
+    assert kwargs["on_error"] is None
+
+
+def test_initialize_reentrant_persistence_write_does_not_double_call_set_enabled(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    enabled_state = {"value": False}
+    fake_registry = MagicMock()
+    fake_registry.is_enabled.side_effect = lambda: enabled_state["value"]
+
+    def fake_set_enabled(enabled, on_ready=None, on_error=None):
+        enabled_state["value"] = enabled
+        if on_ready is not None:
+            on_ready()
+
+    fake_registry.set_enabled.side_effect = fake_set_enabled
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    facade.initialize()
+
+    settings = SmartSearchSettings()
+    settings.enabled = True
+    settings.save()
+
+    assert fake_registry.set_enabled.call_count == 1
+    args, _ = fake_registry.set_enabled.call_args
+    assert args == (True,)
+    assert SmartSearchSettings().enabled is True
+
+
+def test_initialize_restores_persisted_enabled_state(tmp_config_dir, monkeypatch):
+    import SciQLop.components.smart_search as facade
+    from SciQLop.components.smart_search.settings import SmartSearchSettings
+
+    with SmartSearchSettings() as settings:
+        settings.enabled = True
+
+    fake_registry = MagicMock()
+    fake_registry.is_enabled.return_value = False
+    monkeypatch.setattr(facade, "_get_registry", lambda: fake_registry)
+
+    facade.initialize()
+
+    fake_registry.set_enabled.assert_called_once()
+    args, _ = fake_registry.set_enabled.call_args
+    assert args == (True,)
