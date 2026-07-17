@@ -2,6 +2,7 @@ import shiboken6
 from PySide6.QtCore import Qt, QRect, Signal, QEvent
 from PySide6.QtGui import QPainter, QColor, QPainterPath, QRegion, QPen
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from SciQLop.core.ui import Metrics, increase_font_size
 
 
 class CoachMark(QWidget):
@@ -23,15 +24,19 @@ class CoachMark(QWidget):
 
         self._bubble = QWidget(self)
         layout = QVBoxLayout(self._bubble)
+        layout.setContentsMargins(*Metrics.margins(1, 1, 1, 1))
+        layout.setSpacing(Metrics.spacing())
         self._title_label = QLabel(self._bubble)
         self._title_label.setStyleSheet("font-weight: bold;")
+        increase_font_size(self._title_label, 1.15)
         self._body_label = QLabel(self._bubble)
         self._body_label.setWordWrap(True)
+        increase_font_size(self._body_label, 1.1)
         buttons = QHBoxLayout()
         self._skip_link = QPushButton("Skip tour", self._bubble)
         self._skip_link.setFlat(True)
         self._skip_link.clicked.connect(self.skip_requested)
-        self._dismiss_button = QPushButton("Got it", self._bubble)
+        self._dismiss_button = QPushButton("Got it / Next", self._bubble)
         self._dismiss_button.clicked.connect(self.dismiss_clicked)
         buttons.addWidget(self._skip_link)
         buttons.addStretch(1)
@@ -41,7 +46,12 @@ class CoachMark(QWidget):
         layout.addLayout(buttons)
         self._bubble.setStyleSheet(
             "background-color: palette(window); border-radius: 6px;")
-        self._bubble.setFixedWidth(280)
+        # Metrics.em() DPI/font-scales this width -- a hardcoded pixel
+        # value here would stay a fixed size while the rest of the app's
+        # text scales with the system font/DPI, making the bubble (and
+        # its wrapped text) look disproportionately cramped on a scaled
+        # display. em(28) matches the previous 280px in the fallback case.
+        self._bubble.setFixedWidth(Metrics.em(28))
 
         main_window.installEventFilter(self)
         self.hide()

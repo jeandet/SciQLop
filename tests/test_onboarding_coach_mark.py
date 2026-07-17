@@ -54,6 +54,28 @@ def test_bubble_stays_within_a_near_full_width_target_instead_of_the_window_edge
         f"estate: bubble={bubble_rect}, target={target.geometry()}")
 
 
+def test_bubble_width_scales_with_metrics_not_a_hardcoded_pixel_value(qtbot):
+    """Real report: the bubble was "still hard to read" after the
+    text-clipping fix -- a hardcoded pixel width stays fixed while the
+    rest of the app's text scales with the system font/DPI (Metrics),
+    making the bubble look disproportionately cramped on a scaled
+    display. The bubble's width must be derived from Metrics, not a
+    magic number, so it scales along with everything else."""
+    from SciQLop.components.onboarding.ui.coach_mark import CoachMark
+    from SciQLop.core.ui import Metrics
+
+    host = QMainWindow()
+    target = QPushButton("target", host)
+    host.resize(800, 600)
+    qtbot.addWidget(host)
+    host.show()
+
+    mark = CoachMark(host)
+    qtbot.addWidget(mark)
+
+    assert mark._bubble.width() == Metrics.em(28)
+
+
 def test_bubble_stays_outside_the_click_through_cutout_for_a_near_full_window_target(qtbot):
     """Reproduces a real report: for overlay_vs_new_subplot, whose target
     (the panel) spans nearly the whole window, the user saw only the
