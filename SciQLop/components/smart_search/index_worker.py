@@ -11,12 +11,15 @@ The cache is a pickle file written and read only by this module, under
 SciQLop's own platformdirs cache directory -- never sourced from anywhere
 untrusted, so pickle's arbitrary-code-execution risk on load doesn't apply
 here."""
+import logging
 import pickle
 from pathlib import Path
 from typing import Sequence
 
 from SciQLop.components.smart_search import model_fetch
 from SciQLop.components.smart_search.domain import NodeSnapshot
+
+_logger = logging.getLogger(__name__)
 
 
 def _load_cache(index_cache_path: str, model_name: str) -> dict:
@@ -26,9 +29,9 @@ def _load_cache(index_cache_path: str, model_name: str) -> dict:
     try:
         with open(path, "rb") as f:
             cache = pickle.load(f)
+        if not isinstance(cache, dict) or cache.get("model_name") != model_name:
+            return {}
     except Exception:
-        return {}
-    if cache.get("model_name") != model_name:
         return {}
     return cache.get("entries", {})
 
@@ -40,10 +43,17 @@ def _save_cache(index_cache_path: str, model_name: str, entries: dict) -> None:
         pickle.dump({"model_name": model_name, "entries": entries}, f)
 
 
+def _save_cache_best_effort(index_cache_path: str, model_name: str, entries: dict) -> None:
+    try:
+        _save_cache(index_cache_path, model_name, entries)
+    except Exception:
+        _logger.warning("Failed to persist smart-search index cache to %s", index_cache_path, exc_info=True)
+
+
 def run(snapshot: Sequence[NodeSnapshot], model_name: str, cache_dir: str, index_cache_path: str) -> dict:
     current = {n.path_key: n.raw_text for n in snapshot}
     if not current:
-        _save_cache(index_cache_path, model_name, {})
+        _save_cache_best_effort(index_cache_path, model_name, {})
         return {}
 
     cached = _load_cache(index_cache_path, model_name)
@@ -56,9 +66,9 @@ def run(snapshot: Sequence[NodeSnapshot], model_name: str, cache_dir: str, index
     newly_embedded = {}
     if to_embed:
         model = model_fetch.load_model(model_name, cache_dir)
-        vectors = model.encode([n.raw_text for n in to_embed])
+        vectors = model.encode([n.raw_text for n in to_embed], use_multiprocessing=False)
         newly_embedded = {n.path_key: (n.raw_text, vectors[i]) for i, n in enumerate(to_embed)}
 
     merged = {**{k: v for k, v in cached.items() if k in current}, **newly_embedded}
-    _save_cache(index_cache_path, model_name, merged)
+    _save_cache_best_effort(index_cache_path, model_name, merged)
     return {path_key: vector for path_key, (raw_text, vector) in merged.items()}

@@ -66,7 +66,8 @@ dependencies = [
     "tomli_w",
     "pyyaml",
     "psutil",
-    "model2vec"
+    "model2vec",
+    "huggingface_hub"
 ]
 [project.urls]
 homepage = "https://github.com/SciQLop/SciQLop"

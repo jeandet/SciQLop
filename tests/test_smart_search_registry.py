@@ -107,7 +107,7 @@ def test_enabling_triggers_reindex_of_already_registered_domains(registry, jobs_
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
+    fake_model.encode.side_effect = lambda texts, **kwargs: np.array([[1.0, 0.0] for _ in texts])
     with patch.object(model_fetch, "download_model", return_value=None), \
          patch.object(model_fetch, "load_model", return_value=fake_model), \
          patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
@@ -121,7 +121,7 @@ def test_corpus_change_during_inflight_reindex_triggers_one_more_after(registry,
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
+    fake_model.encode.side_effect = lambda texts, **kwargs: np.array([[1.0, 0.0] for _ in texts])
     with patch.object(model_fetch, "download_model", return_value=None), \
          patch.object(model_fetch, "load_model", return_value=fake_model), \
          patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
@@ -161,7 +161,7 @@ def test_query_returns_cosine_scores(registry, qtbot):
     registry.register_domain(domain)
     fake_model = MagicMock()
 
-    def _encode(texts):
+    def _encode(texts, **kwargs):
         return np.array([[1.0, 0.0] if t in ("hi", "query") else [0.0, 1.0] for t in texts])
     fake_model.encode.side_effect = _encode
 
@@ -180,7 +180,7 @@ def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend,
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
+    fake_model.encode.side_effect = lambda texts, **kwargs: np.array([[1.0, 0.0] for _ in texts])
     job_ids = []
     jobs_backend.job_added.connect(job_ids.append)
 
