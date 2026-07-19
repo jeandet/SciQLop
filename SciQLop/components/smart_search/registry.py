@@ -27,12 +27,13 @@ class _DomainState:
 
 
 class SmartSearchRegistry(QObject):
-    def __init__(self, jobs_backend, model_name: str, cache_dir: str,
+    def __init__(self, jobs_backend, model_name: str, cache_dir: str, index_cache_dir: str,
                  debounce_ms: int = _DEFAULT_DEBOUNCE_MS, parent=None):
         super().__init__(parent)
         self._jobs_backend = jobs_backend
         self._model_name = model_name
         self._cache_dir = cache_dir
+        self._index_cache_dir = index_cache_dir
         self._debounce_ms = debounce_ms
         self._domains: Dict[str, _DomainState] = {}
         self._job_to_domain: Dict[str, str] = {}
@@ -67,8 +68,9 @@ class SmartSearchRegistry(QObject):
             return
         state.dirty = False
         snapshot = list(state.domain.snapshot())
+        index_cache_path = f"{self._index_cache_dir}/{domain_name}.pkl"
         job_id = self._jobs_backend.submit_function(
-            index_worker.run, (snapshot, self._model_name, self._cache_dir),
+            index_worker.run, (snapshot, self._model_name, self._cache_dir, index_cache_path),
             f"Smart search: reindex {domain_name}")
         state.job_id = job_id
         self._job_to_domain[job_id] = domain_name
@@ -148,7 +150,7 @@ class SmartSearchRegistry(QObject):
             return {}
         matrix = state.matrix
         path_keys = state.path_keys
-        query_vec = next(self._query_model.embed([text]))
+        query_vec = self._query_model.encode([text])[0]
         norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query_vec)
         norms[norms == 0] = 1.0
         cosine = (matrix @ query_vec) / norms

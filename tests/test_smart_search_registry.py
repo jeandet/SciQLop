@@ -58,8 +58,9 @@ def jobs_backend(qtbot):
 
 
 @pytest.fixture
-def registry(qtbot, jobs_backend):
-    return SmartSearchRegistry(jobs_backend, model_name="fake-model", cache_dir="/tmp/cache", debounce_ms=20)
+def registry(qtbot, jobs_backend, tmp_path):
+    return SmartSearchRegistry(jobs_backend, model_name="fake-model", cache_dir="/tmp/cache",
+                                index_cache_dir=str(tmp_path / "index_cache"), debounce_ms=20)
 
 
 def test_register_domain_then_notify_changed_submits_no_job_while_disabled(registry, jobs_backend, qtbot):
@@ -106,7 +107,7 @@ def test_enabling_triggers_reindex_of_already_registered_domains(registry, jobs_
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.embed.side_effect = lambda texts: iter([np.array([1.0, 0.0]) for _ in texts])
+    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
     with patch.object(model_fetch, "download_model", return_value=None), \
          patch.object(model_fetch, "load_model", return_value=fake_model), \
          patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
@@ -120,7 +121,7 @@ def test_corpus_change_during_inflight_reindex_triggers_one_more_after(registry,
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.embed.side_effect = lambda texts: iter([np.array([1.0, 0.0]) for _ in texts])
+    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
     with patch.object(model_fetch, "download_model", return_value=None), \
          patch.object(model_fetch, "load_model", return_value=fake_model), \
          patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
@@ -160,9 +161,9 @@ def test_query_returns_cosine_scores(registry, qtbot):
     registry.register_domain(domain)
     fake_model = MagicMock()
 
-    def _embed(texts):
-        return iter([np.array([1.0, 0.0]) if t in ("hi", "query") else np.array([0.0, 1.0]) for t in texts])
-    fake_model.embed.side_effect = _embed
+    def _encode(texts):
+        return np.array([[1.0, 0.0] if t in ("hi", "query") else [0.0, 1.0] for t in texts])
+    fake_model.encode.side_effect = _encode
 
     with patch.object(model_fetch, "download_model", return_value=None), \
          patch.object(model_fetch, "load_model", return_value=fake_model), \
@@ -179,7 +180,7 @@ def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend,
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)
     fake_model = MagicMock()
-    fake_model.embed.side_effect = lambda texts: iter([np.array([1.0, 0.0]) for _ in texts])
+    fake_model.encode.side_effect = lambda texts: np.array([[1.0, 0.0] for _ in texts])
     job_ids = []
     jobs_backend.job_added.connect(job_ids.append)
 
@@ -192,3 +193,22 @@ def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend,
 
     assert len(job_ids) == 2  # the enable job, then the auto-triggered reindex job
     assert all(job_id not in jobs_backend._futures for job_id in job_ids)
+
+
+def test_trigger_reindex_passes_index_cache_path_to_submit_function(qtbot, tmp_path):
+    mock_backend = MagicMock()
+    registry = SmartSearchRegistry(mock_backend, model_name="fake-model", cache_dir="/tmp/cache",
+                                    index_cache_dir=str(tmp_path / "index_cache"), debounce_ms=20)
+    registry._enabled = True
+    domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
+    registry.register_domain(domain)
+    registry._trigger_reindex("products")
+
+    mock_backend.submit_function.assert_called_once()
+    args, kwargs = mock_backend.submit_function.call_args
+    fn, call_args, name = args
+    assert fn is index_worker.run
+    snapshot, model_name, cache_dir, index_cache_path = call_args
+    assert index_cache_path == str(tmp_path / "index_cache" / "products.pkl")
+    assert model_name == "fake-model"
+    assert cache_dir == "/tmp/cache"
