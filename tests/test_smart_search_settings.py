@@ -12,7 +12,7 @@ def test_defaults(tmp_config_dir):
     from SciQLop.components.smart_search.settings import SmartSearchSettings
     s = SmartSearchSettings()
     assert s.enabled is False
-    assert s.model == "BAAI/bge-small-en-v1.5"
+    assert s.model == "minishlab/potion-base-8M"
 
 
 def test_category_and_subcategory(tmp_config_dir):
@@ -26,7 +26,7 @@ def test_persists_across_instances(tmp_config_dir):
     from SciQLop.components.smart_search.settings import SmartSearchSettings
     with SmartSearchSettings() as s:
         s.enabled = True
-        s.model = "sentence-transformers/all-MiniLM-L6-v2"
+        s.model = "minishlab/potion-base-32M"
     s2 = SmartSearchSettings()
     assert s2.enabled is True
-    assert s2.model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert s2.model == "minishlab/potion-base-32M"

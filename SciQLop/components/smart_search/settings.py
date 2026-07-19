@@ -3,7 +3,7 @@ from typing import Literal
 from SciQLop.components.settings import SettingsCategory
 from SciQLop.components.settings.backend import ConfigEntry
 
-AVAILABLE_MODELS = ("BAAI/bge-small-en-v1.5", "sentence-transformers/all-MiniLM-L6-v2")
+AVAILABLE_MODELS = ("minishlab/potion-base-8M", "minishlab/potion-base-32M")
 
 
 class SmartSearchSettings(ConfigEntry):
@@ -11,4 +11,4 @@ class SmartSearchSettings(ConfigEntry):
     subcategory = "Smart Search"
 
     enabled: bool = False
-    model: Literal["BAAI/bge-small-en-v1.5", "sentence-transformers/all-MiniLM-L6-v2"] = AVAILABLE_MODELS[0]
+    model: Literal["minishlab/potion-base-8M", "minishlab/potion-base-32M"] = AVAILABLE_MODELS[0]
