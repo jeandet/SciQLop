@@ -19,12 +19,19 @@ def _cache_dir() -> str:
     return user_cache_dir(appname="sciqlop", appauthor="LPP", ensure_exists=True) + "/smart_search_models"
 
 
+def _index_cache_dir() -> str:
+    from platformdirs import user_cache_dir
+    return user_cache_dir(appname="sciqlop", appauthor="LPP", ensure_exists=True) + "/smart_search_index"
+
+
 def _get_registry() -> SmartSearchRegistry:
     global _registry
     if _registry is None:
         with SmartSearchSettings() as settings:
             model_name = settings.model
-        _registry = SmartSearchRegistry(_jobs_backend_instance(), model_name=model_name, cache_dir=_cache_dir())
+        _registry = SmartSearchRegistry(
+            _jobs_backend_instance(), model_name=model_name, cache_dir=_cache_dir(),
+            index_cache_dir=_index_cache_dir())
     return _registry
 
 
@@ -46,7 +53,7 @@ def query(domain_name: str, text: str) -> dict:
 
 def is_available() -> bool:
     try:
-        import fastembed  # noqa: F401
+        import model2vec  # noqa: F401
     except ImportError:
         return False
     return True

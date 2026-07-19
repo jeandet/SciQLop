@@ -26,9 +26,9 @@ def reset_initialize_state():
         facade._initialized = False
 
 
-def test_is_available_reflects_fastembed_importability():
+def test_is_available_reflects_model2vec_importability():
     from SciQLop.components.smart_search import is_available
-    assert is_available() is True  # fastembed is a mandatory dependency, always importable
+    assert is_available() is True  # model2vec is a mandatory dependency, always importable
 
 
 def test_available_models_matches_settings_module():
@@ -61,9 +61,9 @@ def test_get_model_and_set_model_read_and_write_settings(tmp_path, monkeypatch):
     from unittest.mock import patch
     with patch("SciQLop.components.settings.backend.entry.SCIQLOP_CONFIG_DIR", str(tmp_path)):
         from SciQLop.components.smart_search import get_model, set_model
-        assert get_model() == "BAAI/bge-small-en-v1.5"
-        set_model("sentence-transformers/all-MiniLM-L6-v2")
-        assert get_model() == "sentence-transformers/all-MiniLM-L6-v2"
+        assert get_model() == "minishlab/potion-base-8M"
+        set_model("minishlab/potion-base-32M")
+        assert get_model() == "minishlab/potion-base-32M"
 
 
 def test_set_enabled_true_persists_only_after_registry_reports_ready(tmp_config_dir, monkeypatch):
@@ -189,3 +189,20 @@ def test_initialize_restores_persisted_enabled_state(tmp_config_dir, monkeypatch
     fake_registry.set_enabled.assert_called_once()
     args, _ = fake_registry.set_enabled.call_args
     assert args == (True,)
+
+
+def test_get_registry_passes_index_cache_dir(monkeypatch, tmp_config_dir):
+    import SciQLop.components.smart_search as facade
+    monkeypatch.setattr(facade, "_jobs_backend_instance", lambda: MagicMock())
+    captured = {}
+
+    class _FakeRegistry:
+        def __init__(self, jobs_backend, model_name, cache_dir, index_cache_dir):
+            captured["cache_dir"] = cache_dir
+            captured["index_cache_dir"] = index_cache_dir
+
+    monkeypatch.setattr(facade, "SmartSearchRegistry", _FakeRegistry)
+    facade._get_registry()
+
+    assert captured["cache_dir"].endswith("smart_search_models")
+    assert captured["index_cache_dir"].endswith("smart_search_index")
