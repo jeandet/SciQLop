@@ -80,6 +80,10 @@ def test_run_drops_entries_no_longer_in_current_snapshot(tmp_path):
 
     mock_load.assert_not_called()
     assert set(result.keys()) == {"a"}
+    # Verify removed entry "b" is also dropped from the persisted cache file
+    with open(cache_path, "rb") as f:
+        cache = pickle.load(f)
+    assert set(cache["entries"].keys()) == {"a"}
 
 
 def test_run_discards_whole_cache_on_model_mismatch(tmp_path):
