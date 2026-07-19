@@ -3,7 +3,15 @@ from unittest.mock import MagicMock, patch
 from SciQLop.components.smart_search.domain import NodeSnapshot
 
 
-def test_snapshot_wraps_corpus_snapshot_items():
+def test_snapshot_prepends_path_key_to_raw_text_for_embedding():
+    """corpus_snapshot()'s key (path_key) is the clean mission/instrument/
+    variable hierarchy (e.g. "root speasy cda MMS MMS1 FGM ..."); its value
+    (raw_text) is verbose CDF metadata (CATDESC/FIELDNAM/UNITS/...) with no
+    mission/instrument names in it at all. Embedding raw_text alone was
+    measured (real user report, real product catalog) to bury mission-
+    specific queries under generic same-named fields from other missions --
+    prepending path_key gives the embedding model the clean hierarchy
+    alongside the descriptive metadata, without discarding either."""
     import SciQLop.components.products.smart_search_domain as mod
 
     fake_flat_model = MagicMock()
@@ -16,7 +24,7 @@ def test_snapshot_wraps_corpus_snapshot_items():
         result = list(domain.snapshot())
 
     assert domain.name == "products"
-    assert set(result) == {NodeSnapshot("a", "text a"), NodeSnapshot("b", "text b")}
+    assert set(result) == {NodeSnapshot("a", "a text a"), NodeSnapshot("b", "b text b")}
 
 
 def test_domain_notifies_registry_on_products_model_changes():

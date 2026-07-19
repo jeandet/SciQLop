@@ -20,7 +20,15 @@ class ProductsDomain:
         model.modelReset.connect(self._on_changed)
 
     def snapshot(self):
-        return [NodeSnapshot(k, v) for k, v in self._corpus_source.corpus_snapshot().items()]
+        """corpus_snapshot()'s key is the clean mission/instrument/variable
+        path (e.g. "root speasy cda MMS MMS1 FGM ..."); its value is verbose
+        CDF metadata (CATDESC/FIELDNAM/UNITS/...) with no mission/instrument
+        names in it. Prepending the path gives the embedding model the
+        clean hierarchy alongside the descriptive metadata -- embedding
+        metadata alone buried mission-specific queries under generically-
+        named fields from unrelated missions (measured against a real
+        product catalog)."""
+        return [NodeSnapshot(k, f"{k} {v}") for k, v in self._corpus_source.corpus_snapshot().items()]
 
     def _on_changed(self, *args) -> None:
         notify_changed(self.name)
