@@ -8,7 +8,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QTimer
 
 from SciQLop.components.sciqlop_logging import getLogger
-from SciQLop.components.smart_search import index_worker, model_fetch
+from SciQLop.components.smart_search import bm25_index, index_worker, model_fetch
 from SciQLop.components.smart_search.domain import SearchDomain
 
 log = getLogger(__name__)
@@ -24,6 +24,7 @@ class _DomainState:
     dirty: bool = False
     path_keys: list = field(default_factory=list)
     matrix: Optional[np.ndarray] = None
+    bm25: Optional[bm25_index.BM25Index] = None
 
 
 class SmartSearchRegistry(QObject):
@@ -90,8 +91,9 @@ class SmartSearchRegistry(QObject):
             return
         if status == "done":
             result = self._jobs_backend.job_result(job_id)
-            state.path_keys = list(result.keys())
-            state.matrix = np.stack(list(result.values())) if result else None
+            state.path_keys = list(result.embeddings.keys())
+            state.matrix = np.stack(list(result.embeddings.values())) if result.embeddings else None
+            state.bm25 = result.bm25
             self._jobs_backend.forget_job(job_id)
         elif status == "crashed":
             log.error("Smart search reindex failed for domain %r", domain_name)
@@ -142,17 +144,34 @@ class SmartSearchRegistry(QObject):
                 self._jobs_backend.forget_job(job_id)
 
     # --- query -------------------------------------------------------------
+    _BM25_CONFIDENT_FRAC = 0.5
+    _CONFIDENT_BAND_MAX = 100.0
+    _FALLBACK_BAND_MAX = 50.0
+
+    def _semantic_scores(self, state: _DomainState, text: str) -> dict:
+        query_vec = self._query_model.encode([text])[0]
+        norms = np.linalg.norm(state.matrix, axis=1) * np.linalg.norm(query_vec)
+        norms[norms == 0] = 1.0
+        cosine = (state.matrix @ query_vec) / norms
+        return {path_key: float(max(0.0, sim)) * 100.0
+                for path_key, sim in zip(state.path_keys, cosine)}
+
     def query(self, domain_name: str, text: str) -> dict:
         if not self._enabled or self._query_model is None:
             return {}
         state = self._domains.get(domain_name)
         if state is None or state.matrix is None:
             return {}
-        matrix = state.matrix
-        path_keys = state.path_keys
-        query_vec = self._query_model.encode([text])[0]
-        norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query_vec)
-        norms[norms == 0] = 1.0
-        cosine = (matrix @ query_vec) / norms
-        return {path_key: float(max(0.0, sim)) * 100.0
-                for path_key, sim in zip(path_keys, cosine)}
+
+        bm25_scores = bm25_index.score(state.bm25, text) if state.bm25 is not None else {}
+        max_bm25 = max(bm25_scores.values(), default=0.0)
+        confident = {
+            path_key: s for path_key, s in bm25_scores.items()
+            if max_bm25 > 0 and s >= self._BM25_CONFIDENT_FRAC * max_bm25
+        }
+
+        result = {k: self._CONFIDENT_BAND_MAX * (v / max_bm25) for k, v in confident.items()}
+        for path_key, sim in self._semantic_scores(state, text).items():
+            if path_key not in result:
+                result[path_key] = self._FALLBACK_BAND_MAX * (sim / 100.0)
+        return result

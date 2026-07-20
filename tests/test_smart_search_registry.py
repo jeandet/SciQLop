@@ -5,7 +5,7 @@ import pytest
 
 from SciQLop.components.smart_search.registry import SmartSearchRegistry
 from SciQLop.components.smart_search.domain import NodeSnapshot
-from SciQLop.components.smart_search import model_fetch, index_worker
+from SciQLop.components.smart_search import bm25_index, model_fetch, index_worker
 
 
 class _FakeDomain:
@@ -156,13 +156,16 @@ def test_rapid_notify_changed_burst_submits_exactly_one_reindex(registry, jobs_b
     assert len(job_ids) == 1
 
 
-def test_query_returns_cosine_scores(registry, qtbot):
+def test_query_falls_back_to_semantic_band_when_bm25_has_no_match(registry, qtbot):
+    # "queryterm" shares no vocabulary with "hi"/"bye" at all, so BM25F
+    # finds nothing confident and query() falls back entirely to the
+    # semantic band (0-50), never the raw 0-100 cosine score.
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi"), NodeSnapshot("b", "bye")])
     registry.register_domain(domain)
     fake_model = MagicMock()
 
     def _encode(texts, **kwargs):
-        return np.array([[1.0, 0.0] if t in ("hi", "query") else [0.0, 1.0] for t in texts])
+        return np.array([[1.0, 0.0] if t in ("hi", "queryterm") else [0.0, 1.0] for t in texts])
     fake_model.encode.side_effect = _encode
 
     with patch.object(model_fetch, "download_model", return_value=None), \
@@ -170,10 +173,44 @@ def test_query_returns_cosine_scores(registry, qtbot):
          patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
         registry.set_enabled(True)
         qtbot.waitUntil(lambda: registry._domains["products"].matrix is not None, timeout=5000)
-        scores = registry.query("products", "query")
+        scores = registry.query("products", "queryterm")
 
-    assert scores["a"] == pytest.approx(100.0)
+    assert scores["a"] == pytest.approx(50.0)
     assert scores["b"] == pytest.approx(0.0)
+
+
+def test_query_ranks_confident_bm25_match_above_higher_semantic_score(registry, qtbot):
+    # Regression test for the reported bug: an entry that lexically matches
+    # the query on its identifying path terms ("mms1 fgm") must outrank a
+    # decoy entry that only wins on raw semantic similarity -- mirrors the
+    # real REACH-vs-MMS1 case this design fixes (see docs/superpowers/specs/
+    # 2026-07-20-smart-search-bm25-ranking-design.md). Fails against the
+    # pre-BM25F query() (pure cosine), which ranks the decoy first.
+    domain = _FakeDomain("products", [
+        NodeSnapshot("mms1 fgm", "mms1 fgm magnetic field instrument"),
+        NodeSnapshot("decoy", "decoy entry about spacecraft magnetic field"),
+    ])
+    registry.register_domain(domain)
+    fake_model = MagicMock()
+
+    def _encode(texts, **kwargs):
+        vectors = []
+        for t in texts:
+            if "decoy" in t or t == "mms1 fgm magnetic field":
+                vectors.append([1.0, 0.0])  # query vector deliberately closest to the decoy
+            else:
+                vectors.append([0.0, 1.0])  # the true lexical match is semantically "far"
+        return np.array(vectors)
+    fake_model.encode.side_effect = _encode
+
+    with patch.object(model_fetch, "download_model", return_value=None), \
+         patch.object(model_fetch, "load_model", return_value=fake_model), \
+         patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
+        registry.set_enabled(True)
+        qtbot.waitUntil(lambda: registry._domains["products"].matrix is not None, timeout=5000)
+        scores = registry.query("products", "mms1 fgm magnetic field")
+
+    assert scores["mms1 fgm"] > scores["decoy"]
 
 
 def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend, qtbot):
