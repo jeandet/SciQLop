@@ -213,6 +213,50 @@ def test_query_ranks_confident_bm25_match_above_higher_semantic_score(registry, 
     assert scores["mms1 fgm"] > scores["decoy"]
 
 
+def test_query_confident_band_maps_top_score_to_100_and_half_threshold_to_50(registry, qtbot):
+    domain = _FakeDomain("products", [NodeSnapshot("a", "hi"), NodeSnapshot("b", "bye")])
+    registry.register_domain(domain)
+    fake_model = MagicMock()
+    fake_model.encode.side_effect = lambda texts, **kwargs: np.array([[0.0, 0.0] for _ in texts])
+
+    with patch.object(model_fetch, "download_model", return_value=None), \
+         patch.object(model_fetch, "load_model", return_value=fake_model), \
+         patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
+        registry.set_enabled(True)
+        qtbot.waitUntil(lambda: registry._domains["products"].matrix is not None, timeout=5000)
+
+        with patch.object(bm25_index, "score", return_value={"a": 10.0, "b": 5.0}):
+            scores = registry.query("products", "anything")
+
+    assert scores["a"] == pytest.approx(100.0)
+    assert scores["b"] == pytest.approx(50.0)
+
+
+def test_query_non_confident_bm25_match_falls_back_to_semantic_band(registry, qtbot):
+    domain = _FakeDomain("products", [NodeSnapshot("a", "hi"), NodeSnapshot("b", "bye")])
+    registry.register_domain(domain)
+    fake_model = MagicMock()
+
+    def _encode(texts, **kwargs):
+        return np.array([[1.0, 0.0] if t in ("hi", "anything") else [0.0, 1.0] for t in texts])
+    fake_model.encode.side_effect = _encode
+
+    with patch.object(model_fetch, "download_model", return_value=None), \
+         patch.object(model_fetch, "load_model", return_value=fake_model), \
+         patch.object(index_worker.model_fetch, "load_model", return_value=fake_model):
+        registry.set_enabled(True)
+        qtbot.waitUntil(lambda: registry._domains["products"].matrix is not None, timeout=5000)
+
+        # "b" matched some BM25 term but scored well below the confident
+        # threshold (10% of max, not >= 50%) -- must fall back to its
+        # semantic score, not get a BM25-derived score.
+        with patch.object(bm25_index, "score", return_value={"a": 10.0, "b": 1.0}):
+            scores = registry.query("products", "anything")
+
+    assert scores["a"] == pytest.approx(100.0)
+    assert scores["b"] == pytest.approx(0.0)
+
+
 def test_completed_enable_and_reindex_jobs_are_forgotten(registry, jobs_backend, qtbot):
     domain = _FakeDomain("products", [NodeSnapshot("a", "hi")])
     registry.register_domain(domain)

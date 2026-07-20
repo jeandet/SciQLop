@@ -30,7 +30,7 @@ _logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class IndexResult:
-    embeddings: dict
+    embeddings: dict[str, "np.ndarray"]
     bm25: bm25_index.BM25Index
 
 

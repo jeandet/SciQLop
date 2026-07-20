@@ -20,23 +20,23 @@ _W_PATH = 6.0
 _W_META = 1.0
 
 
-def _tokenize(text: str) -> list:
+def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
 @dataclass(frozen=True)
 class BM25Index:
-    path_keys: list
-    path_inverted: dict
-    meta_inverted: dict
-    path_len: list
-    meta_len: list
+    path_keys: list[str]
+    path_inverted: dict[str, dict[int, int]]
+    meta_inverted: dict[str, dict[int, int]]
+    path_len: list[int]
+    meta_len: list[int]
     path_avgdl: float
     meta_avgdl: float
     doc_count: int
 
 
-def _invert(field_tokens: list) -> dict:
+def _invert(field_tokens: list[list[str]]) -> dict[str, dict[int, int]]:
     inverted = defaultdict(dict)
     for doc_id, toks in enumerate(field_tokens):
         for term, count in Counter(toks).items():
@@ -69,7 +69,7 @@ def _idf(index: BM25Index, term: str) -> float:
     return math.log((index.doc_count - n + 0.5) / (n + 0.5) + 1)
 
 
-def score(index: BM25Index, query: str) -> dict:
+def score(index: BM25Index, query: str) -> dict[str, float]:
     """Returns {path_key: raw_bm25f_score} for every entry with at least
     one matching term. Empty dict if the query has no vocabulary overlap
     with the corpus at all."""
