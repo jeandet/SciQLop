@@ -164,7 +164,8 @@ class ProductSearchOverlay(QWidget):
         QThreadPool.globalInstance().start(_QueryTask())
 
     def _apply_smart_search_scores(self, scores: dict) -> None:
-        self._filter_model.set_external_scores(scores)
+        self._filter_model.set_signal_enabled("smart_search", True)
+        self._filter_model.set_external_scores("smart_search", scores)
 
     def _on_filter_ready(self):
         text = self._search_box.text().strip()

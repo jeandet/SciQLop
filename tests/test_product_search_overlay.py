@@ -145,7 +145,7 @@ class TestProductSearchOverlaySmartSearch:
             qtbot.waitUntil(lambda: overlay._filter_model.set_external_scores.called, timeout=2000)
 
         mock_query.assert_called_once_with("products", "mms fgm")
-        overlay._filter_model.set_external_scores.assert_called_once_with({"a": 99.0})
+        overlay._filter_model.set_external_scores.assert_called_once_with("smart_search", {"a": 99.0})
 
     def test_smart_search_not_queried_when_disabled(self, qtbot):
         from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
@@ -162,6 +162,55 @@ class TestProductSearchOverlaySmartSearch:
 
         mock_query.assert_not_called()
         overlay._filter_model.set_external_scores.assert_not_called()
+
+    def test_apply_smart_search_scores_calls_real_binding_signature(self, qtbot):
+        # Regression test: SciQLopPlots 0.31.0 generalized set_external_scores()
+        # from a single-signal (scores) call to a named-signal (signal_name,
+        # scores) call. The other tests in this class mock _filter_model, so
+        # they don't exercise the real C++ binding and wouldn't catch a
+        # signature mismatch (TypeError: missing signal_name).
+        from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
+
+        overlay = ProductSearchOverlay()
+        qtbot.addWidget(overlay)
+
+        overlay._apply_smart_search_scores({})
+
+    def test_smart_search_scores_actually_surface_matches(self, qtbot):
+        # Regression: SciQLopPlots 0.31.0 defaults every named external
+        # signal to disabled (set_signal_enabled("smart_search", True) must
+        # be called explicitly) -- set_external_scores() alone silently does
+        # nothing. The other tests in this class only assert
+        # set_external_scores was *called*, which doesn't catch this: the
+        # call happens, it's just inert without the matching enable call.
+        import uuid
+        from SciQLop.components.plotting.ui.product_search_overlay import ProductSearchOverlay
+        from SciQLopPlots import (
+            ProductsModel, ProductsModelNode, ProductsModelNodeType,
+            ParameterType, QueryParser,
+        )
+
+        token = uuid.uuid4().hex[:8]
+        model = ProductsModel.instance()
+        root = ProductsModelNode(f"SmartSearchEnableRoot_{token}")
+        leaf = ProductsModelNode(
+            "acronym_only", "test", {"description": "totally unrelated text"},
+            ProductsModelNodeType.PARAMETER, ParameterType.Scalar)
+        root.add_child(leaf)
+        model.add_node([], root)
+        path_key = " ".join(leaf.path())
+
+        overlay = ProductSearchOverlay()
+        qtbot.addWidget(overlay)
+        overlay._apply_smart_search_scores({path_key: 100.0})
+        overlay._filter_model.set_query(QueryParser.parse("magnetic field"))
+        from PySide6.QtCore import QCoreApplication
+        for _ in range(10):
+            QCoreApplication.processEvents()
+
+        names = [overlay._filter_model.data(overlay._filter_model.index(i, 0))
+                 for i in range(overlay._filter_model.rowCount())]
+        assert "acronym_only" in names
 
     def test_smart_search_scores_not_applied_when_overlay_destroyed(self, qtbot):
         from PySide6.QtCore import QThreadPool

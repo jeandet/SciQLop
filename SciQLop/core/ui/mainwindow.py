@@ -183,6 +183,9 @@ class SciQLopMainWindow(QtWidgets.QMainWindow):
         from SciQLop.components.products.product_context_menu import setup_product_context_menu
         setup_product_context_menu(self.productTree, self)
 
+        from SciQLop.components.products.sidebar_smart_search import setup_sidebar_smart_search
+        setup_sidebar_smart_search(self.productTree)
+
         self.catalogs_browser = CatalogBrowser(self)
         self.catalogs_browser.setWindowIcon(theme_icon("catalogue"))
         self.add_side_pan(self.catalogs_browser)
