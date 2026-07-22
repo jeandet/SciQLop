@@ -25,11 +25,15 @@ def _symlink_if_exists(real_dir: Path, target_parent: Path, name: str):
 
 
 def _preserve_speasy_dirs():
-    """Symlink speasy's config/cache/data dirs from the real home into temp dirs.
+    """Symlink speasy's config/cache/data dirs, and the smart-search index
+    cache, from the real home into temp dirs.
 
     Without this, redirecting XDG vars empties speasy's cache, causing
     massive re-downloads. speasy uses appdirs which reads XDG_DATA_HOME,
-    XDG_CACHE_HOME, and XDG_CONFIG_HOME.
+    XDG_CACHE_HOME, and XDG_CONFIG_HOME. The smart-search index cache is
+    symlinked too (scoped to just that subdirectory, not all of
+    ~/.cache/sciqlop) so tests/test_smart_search_benchmark.py can see the
+    real product corpus instead of skipping unconditionally.
     """
     home = Path.home()
     real_data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local" / "share")))
@@ -42,6 +46,12 @@ def _preserve_speasy_dirs():
     cache_dir = _test_tmp / "cache"
     cache_dir.mkdir(exist_ok=True)
     _symlink_if_exists(real_cache / "speasy", cache_dir, "speasy")
+
+    sciqlop_cache_dir = cache_dir / "sciqlop"
+    sciqlop_cache_dir.mkdir(exist_ok=True)
+    _symlink_if_exists(real_cache / "sciqlop" / "smart_search_index", sciqlop_cache_dir, "smart_search_index")
+    _symlink_if_exists(real_cache / "sciqlop" / "smart_search_models", sciqlop_cache_dir, "smart_search_models")
+
     os.environ["XDG_CACHE_HOME"] = str(cache_dir)
 
 
