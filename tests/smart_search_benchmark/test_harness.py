@@ -1,7 +1,9 @@
-from unittest.mock import patch
+import pickle
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from SciQLop.components.smart_search import bm25_index, model_fetch
 from tests.smart_search_benchmark import harness
 from tests.smart_search_benchmark.cases import BenchmarkCase
 from tests.smart_search_benchmark.harness import RealCorpus
@@ -68,3 +70,40 @@ def test_evaluate_any_of_multiple_expected_prefixes_counts():
 
     assert result.passed
     assert result.best_rank == 2
+
+
+def _write_fake_cache(path, model_name="fake-model"):
+    # raw_text must start with its own path_key (the real convention -- see
+    # SciQLop/components/products/smart_search_domain.py's `f"{k} {v}"` --
+    # bm25_index.build() slices raw_text[len(path_key):] for the meta field).
+    entries = {
+        "root a": ("root a raw text a", np.array([1.0, 0.0])),
+        "root b": ("root b raw text b", np.array([0.0, 1.0])),
+    }
+    with open(path, "wb") as f:
+        pickle.dump({"model_name": model_name, "entries": entries}, f)
+
+
+def test_load_real_corpus_parses_cache_into_real_corpus(tmp_path):
+    cache_path = tmp_path / "products.pkl"
+    _write_fake_cache(cache_path)
+    fake_model = MagicMock()
+
+    with patch.object(model_fetch, "load_model", return_value=fake_model) as mock_load:
+        corpus = harness.load_real_corpus(cache_path)
+
+    assert corpus.path_keys == ["root a", "root b"]
+    assert corpus.matrix.shape == (2, 2)
+    assert corpus.query_model is fake_model
+    mock_load.assert_called_once_with("fake-model", cache_dir=harness._cache_dir())
+
+
+def test_load_real_corpus_builds_bm25_index_from_cached_raw_text(tmp_path):
+    cache_path = tmp_path / "products.pkl"
+    _write_fake_cache(cache_path)
+
+    with patch.object(model_fetch, "load_model", return_value=MagicMock()):
+        corpus = harness.load_real_corpus(cache_path)
+
+    scores = bm25_index.score(corpus.bm25, "raw")
+    assert set(scores.keys()) == {"root a", "root b"}
