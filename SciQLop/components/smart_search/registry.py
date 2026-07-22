@@ -27,6 +27,44 @@ class _DomainState:
     bm25: Optional[bm25_index.BM25Index] = None
 
 
+_BM25_CONFIDENT_FRAC = 0.5
+_CONFIDENT_BAND_MAX = 100.0
+_FALLBACK_BAND_MAX = 50.0
+
+
+def _semantic_scores(path_keys: list, matrix: np.ndarray, query_model, text: str) -> dict:
+    query_vec = query_model.encode([text])[0]
+    norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query_vec)
+    norms[norms == 0] = 1.0
+    cosine = (matrix @ query_vec) / norms
+    return {path_key: float(max(0.0, sim)) * 100.0
+            for path_key, sim in zip(path_keys, cosine)}
+
+
+def score_query(
+    text: str,
+    path_keys: list,
+    matrix: np.ndarray,
+    bm25: Optional[bm25_index.BM25Index],
+    query_model,
+    bm25_confident_frac: float = _BM25_CONFIDENT_FRAC,
+    confident_band_max: float = _CONFIDENT_BAND_MAX,
+    fallback_band_max: float = _FALLBACK_BAND_MAX,
+) -> dict:
+    bm25_scores = bm25_index.score(bm25, text) if bm25 is not None else {}
+    max_bm25 = max(bm25_scores.values(), default=0.0)
+    confident = {
+        path_key: s for path_key, s in bm25_scores.items()
+        if max_bm25 > 0 and s >= bm25_confident_frac * max_bm25
+    }
+
+    result = {k: confident_band_max * (v / max_bm25) for k, v in confident.items()}
+    for path_key, sim in _semantic_scores(path_keys, matrix, query_model, text).items():
+        if path_key not in result:
+            result[path_key] = fallback_band_max * (sim / 100.0)
+    return result
+
+
 class SmartSearchRegistry(QObject):
     def __init__(self, jobs_backend, model_name: str, cache_dir: str, index_cache_dir: str,
                  debounce_ms: int = _DEFAULT_DEBOUNCE_MS, parent=None):
@@ -144,34 +182,10 @@ class SmartSearchRegistry(QObject):
                 self._jobs_backend.forget_job(job_id)
 
     # --- query -------------------------------------------------------------
-    _BM25_CONFIDENT_FRAC = 0.5
-    _CONFIDENT_BAND_MAX = 100.0
-    _FALLBACK_BAND_MAX = 50.0
-
-    def _semantic_scores(self, state: _DomainState, text: str) -> dict:
-        query_vec = self._query_model.encode([text])[0]
-        norms = np.linalg.norm(state.matrix, axis=1) * np.linalg.norm(query_vec)
-        norms[norms == 0] = 1.0
-        cosine = (state.matrix @ query_vec) / norms
-        return {path_key: float(max(0.0, sim)) * 100.0
-                for path_key, sim in zip(state.path_keys, cosine)}
-
     def query(self, domain_name: str, text: str) -> dict:
         if not self._enabled or self._query_model is None:
             return {}
         state = self._domains.get(domain_name)
         if state is None or state.matrix is None:
             return {}
-
-        bm25_scores = bm25_index.score(state.bm25, text) if state.bm25 is not None else {}
-        max_bm25 = max(bm25_scores.values(), default=0.0)
-        confident = {
-            path_key: s for path_key, s in bm25_scores.items()
-            if max_bm25 > 0 and s >= self._BM25_CONFIDENT_FRAC * max_bm25
-        }
-
-        result = {k: self._CONFIDENT_BAND_MAX * (v / max_bm25) for k, v in confident.items()}
-        for path_key, sim in self._semantic_scores(state, text).items():
-            if path_key not in result:
-                result[path_key] = self._FALLBACK_BAND_MAX * (sim / 100.0)
-        return result
+        return score_query(text, state.path_keys, state.matrix, state.bm25, self._query_model)

@@ -293,3 +293,22 @@ def test_trigger_reindex_passes_index_cache_path_to_submit_function(qtbot, tmp_p
     assert index_cache_path == str(tmp_path / "index_cache" / "products.pkl")
     assert model_name == "fake-model"
     assert cache_dir == "/tmp/cache"
+
+
+from SciQLop.components.smart_search.registry import score_query
+
+
+def test_score_query_is_callable_without_a_live_registry():
+    # score_query must work from raw ingredients alone -- no SmartSearchRegistry,
+    # no QObject, no jobs backend. This is what tests/smart_search_benchmark/
+    # relies on to score the real corpus outside the app.
+    path_keys = ["a", "b"]
+    matrix = np.array([[1.0, 0.0], [0.0, 1.0]])
+    bm25 = bm25_index.build([NodeSnapshot("a", "a hi"), NodeSnapshot("b", "b bye")])
+    fake_model = MagicMock()
+    fake_model.encode.side_effect = lambda texts, **kwargs: np.array([[1.0, 0.0] for _ in texts])
+
+    scores = score_query("hi", path_keys, matrix, bm25, fake_model)
+
+    assert scores["a"] == pytest.approx(100.0)
+    assert scores["b"] == pytest.approx(0.0)
