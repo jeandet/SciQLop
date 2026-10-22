@@ -103,8 +103,7 @@ def test_each_relation_row_follows_its_base_plot(main_window, qtbot):
     panel = _build(comparison, qtbot)
     qtbot.waitUntil(lambda: len(panel.plots()) == 4)
     first = [graph_name(_graphs(p)[0]) for p in panel.plots()]
-    assert first[1] == f"{first[0]}: A − B"
-    assert first[3] == f"{first[2]}: A − B"
+    assert first == ["first — A: P", "first: A − B", "second — A: P", "second: A − B"]
 
 
 def test_ratio_operation_and_unknown_operation_falls_back(main_window, qtbot, caplog):
@@ -312,3 +311,42 @@ def test_keep_symmetric_applies_to_the_range_the_axis_already_has(main_window, q
     axis.set_range(SciQLopPlotRange(1.0, 5.0))
     _keep_symmetric(axis)
     assert (axis.range().start(), axis.range().stop()) == pytest.approx((-5.0, 5.0))
+
+
+def _ramp_vp(name):
+    def ramp(start: float, stop: float):
+        x = np.linspace(start, stop, 50)
+        return x, x.copy()
+    return _vp(name, ramp)
+
+
+def _x_span(graph):
+    x = _buffers(graph)[0]
+    return (float(x[0]), float(x[-1])) if x.size else None
+
+
+def test_panning_moves_the_ghost_with_its_base(main_window, qtbot):
+    from SciQLop.core import TimeRange
+    _, path = _ramp_vp("pan")
+    comparison = _comparison(_template([ProductModel(path=path)]), "time",
+                             [Variant(label="later", params={"start": 2_000.0, "stop": 2_100.0})])
+    panel = _build(comparison, qtbot)
+    qtbot.waitUntil(lambda: len(_graphs(panel.plots()[0])) == 2)
+    base, ghost = _graphs(panel.plots()[0])
+    qtbot.waitUntil(lambda: _x_span(ghost) is not None)
+    panel.time_range = TimeRange(1_500.0, 1_600.0)
+    qtbot.waitUntil(lambda: _x_span(base) is not None and _x_span(base)[0] >= 1_400.0)
+    qtbot.waitUntil(lambda: _x_span(ghost) is not None and _x_span(ghost)[0] >= 1_400.0, timeout=3000)
+
+
+def test_a_time_difference_names_its_sides_and_marks_the_alignment_on_every_row(main_window, qtbot):
+    _, path = _ramp_vp("named")
+    comparison = _comparison(_template([ProductModel(path=path)]), "time",
+                             [Variant(label="later", params={"start": 2_000.0, "stop": 2_100.0})])
+    panel = _build(comparison, qtbot)
+    qtbot.waitUntil(lambda: len(panel.plots()) == 2)
+    base, ghost = _graphs(panel.plots()[0])
+    assert graph_name(base).endswith("— A: P")
+    assert "— B: later (+" in graph_name(ghost)
+    assert graph_name(_graphs(panel.plots()[1])[0]).endswith(": A − B")
+    assert [line.position for line in panel.alignment_lines] == [BASE_RANGE[0]] * 2

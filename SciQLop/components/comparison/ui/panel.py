@@ -52,7 +52,7 @@ class ComparisonPanel(QWidget):
         self.tab_bar.currentChanged.connect(self._on_tab_changed)
         # A tab bar always has a current tab, so an unknown stored view leaves one selected: clicking it must still switch.
         self.tab_bar.tabBarClicked.connect(self._on_tab_changed)
-        self.anchor_label = QLabel()
+        self.anchor_label = QLabel("Line up the events on")
         self.anchor_combo = QComboBox()
         for anchor, label in ANCHOR_LABELS.items():
             self.anchor_combo.addItem(label, anchor)
@@ -115,7 +115,6 @@ class ComparisonPanel(QWidget):
         is_time = self._comparison.dimension == "time"
         self.anchor_label.setVisible(is_time)
         self.anchor_combo.setVisible(is_time)
-        self.anchor_label.setText(f"aligned on event {ANCHOR_LABELS[self._comparison.anchor]}")
         self._quietly(self.anchor_combo, lambda: self.anchor_combo.setCurrentIndex(
             self.anchor_combo.findData(self._comparison.anchor)))
 

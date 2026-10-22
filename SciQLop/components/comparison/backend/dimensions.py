@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Optional
 
 from SciQLop.components.comparison.backend.model import Anchor, Comparison, GraphSpec, Side, Variant, sides
 from SciQLop.core.extensions import ExtensionPoint, declare
@@ -54,10 +54,31 @@ def validate_time(params: dict) -> None:
         raise ValueError("stop must be after start")
 
 
+def _event_range(variant: Variant) -> tuple[float, float]:
+    return variant.params["start"], variant.params["stop"]
+
+
+def base_event(comparison: Comparison) -> Optional[Variant]:
+    """The picked event the base panel is showing: inside the window, across its centre. Side A is that event,
+    so it lines up with itself; a shifted copy of the window (an interval, not an event on screen) stays a variant."""
+    start, stop = base_range(comparison)
+    centre = (start + stop) / 2
+
+    def on_screen(v: Variant) -> bool:
+        return start <= v.params["start"] <= centre <= v.params["stop"] <= stop
+
+    return next((v for v in comparison.variants if on_screen(v)), None)
+
+
+def _reference_range(comparison: Comparison) -> tuple[float, float]:
+    event = base_event(comparison)
+    return _event_range(event) if event is not None else base_range(comparison)
+
+
 def apply_time(specs: list[GraphSpec], variant: Variant, comparison: Comparison) -> Side:
-    start, stop = variant.params["start"], variant.params["stop"]
+    start, stop = _event_range(variant)
     t0 = anchor_time(start, stop, comparison.anchor)
-    offset = t0 - anchor_time(*base_range(comparison), comparison.anchor)
+    offset = t0 - anchor_time(*_reference_range(comparison), comparison.anchor)
     return Side(label=variant.label, specs=[s.model_copy(update={"time_offset": s.time_offset + offset})
                                             for s in specs],
                 t0=t0, duration=stop - start)
@@ -65,8 +86,9 @@ def apply_time(specs: list[GraphSpec], variant: Variant, comparison: Comparison)
 
 def base_time_side(specs: list[GraphSpec], comparison: Comparison) -> Side:
     start, stop = base_range(comparison)
-    return Side(label=comparison.template().name, specs=specs,
-                t0=anchor_time(start, stop, comparison.anchor), duration=stop - start)
+    event = base_event(comparison)
+    return Side(label=event.label if event is not None else comparison.template().name, specs=specs,
+                t0=anchor_time(*_reference_range(comparison), comparison.anchor), duration=stop - start)
 
 
 def validate_product(params: dict) -> None:

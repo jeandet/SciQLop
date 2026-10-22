@@ -90,6 +90,35 @@ def test_resolve_sides_puts_base_first(core_dimensions):
     assert (result[0].t0, result[0].duration) == (100.0, 100.0)
 
 
+def _event(start, stop):
+    return Variant(label=f"event {start:g}", params={"start": start, "stop": stop})
+
+
+def test_the_event_the_base_window_is_centred_on_is_side_a(core_dimensions):
+    c = _comparison(variants=[_event(120.0, 180.0), _event(1130.0, 1190.0)])
+    a, b = resolve_sides(c)
+    assert (a.label, a.t0) == ("event 120", 120.0)
+    assert {s.time_offset for s in b.specs} == {1010.0}
+    assert b.label == "event 1130"
+
+
+def test_comparing_the_base_event_to_itself_shifts_nothing(core_dimensions):
+    sides = resolve_sides(_comparison(variants=[_event(120.0, 180.0)]))
+    assert [s.label for s in sides] == ["event 120"]
+
+
+def test_a_shifted_copy_of_the_window_stays_a_variant(core_dimensions):
+    a, b = resolve_sides(_comparison(variants=[_event(110.0, 210.0)]))
+    assert (a.label, a.t0) == ("P", 100.0)
+    assert {s.time_offset for s in b.specs} == {10.0}
+
+
+def test_without_an_event_under_the_window_centre_side_a_is_the_window(core_dimensions):
+    a, b, _ = resolve_sides(_comparison(variants=[_event(160.0, 190.0), _event(1160.0, 1190.0)]))
+    assert (a.label, a.t0) == ("P", 100.0)
+    assert {s.time_offset for s in b.specs} == {60.0}
+
+
 def test_dimensions_module_does_not_import_qt_widgets():
     code = ("import SciQLop.components.comparison.backend.dimensions, sys; "
             "assert 'PySide6.QtWidgets' not in sys.modules")

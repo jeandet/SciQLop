@@ -78,8 +78,11 @@ def base_specs(template: PanelTemplate) -> list[GraphSpec]:
 def sides(comparison: Comparison,
           base_side: Callable[[list[GraphSpec], Comparison], Side],
           apply: Callable[[list[GraphSpec], Variant, Comparison], Side]) -> list[Side]:
+    """A variant showing exactly what the base shows is the base itself, not a second side."""
     specs = base_specs(comparison.template())
-    return [base_side(specs, comparison)] + [apply(specs, v, comparison) for v in comparison.variants]
+    base = base_side(specs, comparison)
+    return [base] + [side for side in (apply(specs, v, comparison) for v in comparison.variants)
+                     if side.specs != base.specs]
 
 
 def changed_keys(sides: list[Side]) -> set[Key]:

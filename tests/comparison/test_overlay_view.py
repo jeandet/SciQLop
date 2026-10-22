@@ -69,8 +69,23 @@ def test_overlay_adds_one_ghost_per_variant(main_window, qtbot):
     plot = panel.plots()[0]
     qtbot.waitUntil(lambda: len(_graphs(plot)) == 3)
     names = [graph_name(g) for g in _graphs(plot)]
-    assert names[1].endswith("— " + comparison.variants[0].label)
-    assert names[2].endswith("— " + comparison.variants[1].label)
+    assert names[0].endswith("— A: P")
+    assert "— B: event 0 (+" in names[1]
+    assert "— C: event 1 (+" in names[2]
+
+
+def test_a_time_overlay_marks_where_the_events_line_up(main_window, qtbot):
+    _, path = _vp("aligned")
+    comparison = _comparison(path, variants=_time_variants(2_000.0))
+    panel = _build(comparison, qtbot)
+    assert [line.position for line in panel.alignment_lines] == [resolve_sides(comparison)[0].t0]
+
+
+def test_a_product_overlay_has_no_alignment_mark(main_window, qtbot):
+    _, path = _vp("unaligned")
+    _, other = _vp("unaligned_other")
+    comparison = _comparison(path, "product", [Variant(label="o", params={"target": [0, 0], "path": other})])
+    assert _build(comparison, qtbot).alignment_lines == []
 
 
 def test_ghost_is_dashed_and_lighter_than_its_base(main_window, qtbot):

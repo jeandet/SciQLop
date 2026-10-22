@@ -82,8 +82,9 @@ h = compare("Panel0", over="time", variants=list(cat)[1:])   # speasy events, Ti
 h.show("difference", operation="ratio")                      # two sides only; raises with the reason otherwise
 ```
 
-The base panel's time range is the first side; each variant is drawn shifted
-onto it (aligned on the event start). `over` can also be `"product"` (another
+Side A is the event the base panel is showing: inside the window and across
+its centre (otherwise, the window itself); every other event is drawn
+shifted onto it, lined up on the event start, with a dotted line marking where. `over` can also be `"product"` (another
 product in place of one graph) or `"settings"` (other knob values).
 `sciqlop_set_comparison_view` switches an open Comparison panel between
 `overlay` and `difference`. The panel is a snapshot of the base panel; keep it

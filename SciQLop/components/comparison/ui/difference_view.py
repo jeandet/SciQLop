@@ -12,7 +12,8 @@ from SciQLop.components.comparison.backend.checks import REMOTE_REFUSAL, compati
 from SciQLop.components.comparison.backend.difference import (ComparisonMismatch, Operation, colormap_relation,
                                                                line_relation, mask_fill)
 from SciQLop.components.comparison.backend.model import Comparison, GraphSpec, Side, changed_keys
-from SciQLop.components.comparison.ui.inner_panel import build_inner_panel, product_labels, provider_and_node
+from SciQLop.components.comparison.ui.inner_panel import (build_inner_panel, mark_alignment, name_base_graphs,
+                                                           product_labels, provider_and_node)
 from SciQLop.components.comparison.ui.overlay_view import add_ghost, base_graphs
 from SciQLop.core.graph_context import graph_name
 from SciQLop.core.plot_hints import PlotHints, merge_hints
@@ -236,10 +237,12 @@ def build_difference(comparison: Comparison, sides: list[Side], options: dict,
         added[spec.plot_index] += 1
         _add_relation(panel, (spec, other), graphs[spec.key], op, method,
                       _plot_position(panel, plot) + added[spec.plot_index])
+    name_base_graphs(graphs, keys, base)
+    panel.alignment_lines = mark_alignment(panel, sides)
     return panel
 
 
 def applies_difference(comparison: Comparison, sides: list[Side]) -> Optional[str]:
-    if len(sides) != 2:
-        return "Difference needs exactly two sides"
-    return None if changed_keys(sides) else "nothing differs between the sides"
+    if not changed_keys(sides):
+        return "nothing differs between the sides"
+    return None if len(sides) == 2 else "Difference needs exactly two sides"

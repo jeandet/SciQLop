@@ -7,7 +7,8 @@ from typing import Optional
 
 from SciQLop.components.comparison.backend.checks import REMOTE_SHIFT_REFUSAL, compatible, is_remote
 from SciQLop.components.comparison.backend.model import Comparison, GraphSpec, Key, Side, changed_keys
-from SciQLop.components.comparison.ui.inner_panel import build_inner_panel, hints_for_path, resolve_hints
+from SciQLop.components.comparison.ui.inner_panel import (build_inner_panel, hints_for_path, mark_alignment,
+                                                           name_base_graphs, resolve_hints, side_letter)
 from SciQLop.components.comparison.ui.ghost_watch import GhostWatch
 from SciQLop.components.plotting.panel_template import PanelTemplate, _place_on_axis, resolve_product_path
 from SciQLop.core.graph_context import graph_name
@@ -66,7 +67,7 @@ def _remote_shift_refusal(spec: GraphSpec) -> Optional[str]:
 
 
 def add_ghost(plot, spec: GraphSpec, base_graph, label: str, index: int):
-    from SciQLop.components.plotting.ui.time_sync_panel import plot_product, _graph_from_result
+    from SciQLop.components.plotting.ui.time_sync_panel import plot_product, shifted_name, _graph_from_result
     statics = (hints_for_path(base_graph.property("sqp_product_path") or ""), resolve_hints(spec))
     reason = compatible(*statics, spec.is_colormap) or _remote_shift_refusal(spec)
     if reason is not None:
@@ -79,7 +80,8 @@ def add_ghost(plot, spec: GraphSpec, base_graph, label: str, index: int):
         return None
     graph = _graph_from_result(r)
     _place_on_axis(plot, graph, spec.y_axis)
-    graph.set_name(f"{graph_name(base_graph)} — {label}")
+    shift = spec.time_offset - (base_graph.property("sqp_time_offset") or 0.0)
+    graph.set_name(shifted_name(f"{graph_name(base_graph)} — {side_letter(index + 1)}: {label}", shift))
     GhostWatch(plot, graph, base_graph, index, label, statics)
     return graph
 
@@ -131,7 +133,10 @@ def build_overlay(comparison: Comparison, sides: list[Side], options: dict,
     panel, plots = build_inner_panel(comparison, time_range, parent)
     keys = changed_keys(sides)
     colormaps = _colormap_keys(sides, keys)
-    _add_ghosts(plots, base_graphs(plots, comparison.template()), sides, keys - colormaps)
+    graphs = base_graphs(plots, comparison.template())
+    _add_ghosts(plots, graphs, sides, keys - colormaps)
+    name_base_graphs(graphs, keys - colormaps, sides[0])
+    panel.alignment_lines = mark_alignment(panel, sides)
     _note_colormaps(plots, sides, colormaps)
     first = _first_plot(plots)
     for message in _summary_notes(sides) if first is not None else []:

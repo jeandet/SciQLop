@@ -133,8 +133,11 @@ For the time dimension the base has an anchor `t0_base` and each variant a `t0`;
 belongs to the future Epoch view. Free time intervals (not catalog events) use their start.
 
 Base and anchor rules (my call):
-- From a panel ("Compare with…", Tools menu): base = the panel's current visible range,
-  `t0_base` = its start (or centre/end per option); every picked event/interval is a variant.
+- From a panel ("Compare with…", Tools menu): when a picked event lies inside the panel's
+  visible range and across its centre, that event is side A (`t0_base` = its anchor) and is not a variant of
+  itself, so comparing an event to itself shifts nothing and the panel's margins are kept around
+  every event. Otherwise side A is the visible range itself, `t0_base` = its start (or centre/end).
+  Any variant identical to side A is dropped. (2026-10-22, after the first hands-on try.)
 - From a catalog selection: base = the **first** selected event, the others are variants
   ("Compare: 3 events" = base + 2 variants). Difference therefore needs exactly two selected.
 - The user's source panel is never moved; the comparison builds its own inner panel.
@@ -179,8 +182,10 @@ like any panel:
   over.
 - `to_config` = `Comparison.model_dump()`; `create` rebuilds from it. Data is re-fetched on
   reopen, never stored. Saving uses the existing template save path.
-- x axis = the base's absolute time; the header states the alignment ("aligned on event
-  start"). Relative-time axis labels are a later improvement.
+- x axis = the base's absolute time; the header reads "Line up the events on [start ▾]" and a
+  dotted vertical line on every plot marks `t0_base`. Legends name the sides: base graphs
+  "… — A: <label>", ghosts "… — B: <label> (+offset)". Relative-time axis labels are a later
+  improvement.
 
 ## 6. Views
 

@@ -73,7 +73,7 @@ def test_open_and_round_trip(main_window, qtbot, opened):
     w = _open(main_window, c)
     assert Comparison.model_validate(panel_tree(w)["config"]) == c
     assert w.title.text() == "Compare: 2 events"
-    assert w.anchor_label.text() == "aligned on event start"
+    assert (w.anchor_label.text(), w.anchor_combo.currentText()) == ("Line up the events on", "start")
 
 
 def test_core_kind_is_registered_but_not_in_new_menu(main_window):
@@ -116,7 +116,7 @@ def test_anchor_change_rebuilds_and_is_saved(main_window, qtbot, opened):
     old = w.inner
     w.anchor_combo.setCurrentIndex(w.anchor_combo.findData("center"))
     assert w.comparison.anchor == "center"
-    assert w.anchor_label.text() == "aligned on event centre"
+    assert w.anchor_combo.currentText() == "centre"
     assert w.inner is not old
     assert panel_tree(w)["config"]["anchor"] == "center"
 
@@ -151,7 +151,8 @@ def test_reopen_with_missing_product_keeps_other_ghosts_in_place(main_window, qt
     assert len(plots) == 1
     qtbot.waitUntil(lambda: len(_graphs(plots[0])) == 2)
     base, ghost = _graphs(plots[0])
-    assert graph_name(ghost) == f"{graph_name(base)} — event 0"
+    assert graph_name(base) == "vp_missing — A: P"
+    assert graph_name(ghost).startswith("vp_missing — B: event 0 (+")
 
 
 def test_source_panel_closed_after_creation(main_window, qtbot, opened):

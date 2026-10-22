@@ -46,8 +46,21 @@ def test_sides_puts_base_first_then_one_per_variant():
                    variants=[Variant(label="v1"), Variant(label="v2")])
     result = sides(c,
                    lambda specs, comp: Side(label="base", specs=specs),
-                   lambda specs, v, comp: Side(label=v.label, specs=specs))
+                   lambda specs, v, comp: Side(label=v.label, specs=_shifted(specs, len(v.label))))
     assert [s.label for s in result] == ["base", "v1", "v2"]
+
+
+def _shifted(specs, offset):
+    return [s.model_copy(update={"time_offset": float(offset)}) for s in specs]
+
+
+def test_a_variant_showing_exactly_the_base_is_not_a_second_side():
+    c = Comparison(base=_template(["a//b"]).to_tree(), dimension="time",
+                   variants=[Variant(label="same"), Variant(label="moved")])
+    result = sides(c,
+                   lambda specs, comp: Side(label="base", specs=specs),
+                   lambda specs, v, comp: Side(label=v.label, specs=_shifted(specs, v.label == "moved")))
+    assert [s.label for s in result] == ["base", "moved"]
 
 
 def test_changed_keys_ignores_identical_specs():
