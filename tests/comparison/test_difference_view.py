@@ -350,3 +350,35 @@ def test_a_time_difference_names_its_sides_and_marks_the_alignment_on_every_row(
     assert "— B: later (+" in graph_name(ghost)
     assert graph_name(_graphs(panel.plots()[1])[0]).endswith(": A − B")
     assert [line.position for line in panel.alignment_lines] == [BASE_RANGE[0]] * 2
+
+
+def _cacheable_ramp_vp(name):
+    from SciQLop.user_api.plot._plots import to_product_path
+    from SciQLop.user_api.virtual_products import VirtualProductType, create_virtual_product
+
+    def ramp(start: float, stop: float):
+        x = np.arange(np.floor(start), np.ceil(stop))
+        return x, x.copy()
+    vp = create_virtual_product(f"test_diff/{name}", ramp, VirtualProductType.Scalar, labels=["y"], cachable=True)
+    return vp, "//".join(to_product_path(vp))
+
+
+@pytest.mark.parametrize("view", ["overlay", "difference"])
+def test_a_small_pan_moves_a_cacheable_ghost_with_its_base(main_window, qtbot, view):
+    from SciQLop.core import TimeRange
+    from SciQLop.components.comparison.ui.difference_view import build_difference
+    from SciQLop.components.comparison.ui.overlay_view import build_overlay
+    _, path = _cacheable_ramp_vp(f"small_pan_{view}")
+    comparison = _comparison(_template([ProductModel(path=path)]), "time",
+                             [Variant(label="later", params={"start": 2_000.0, "stop": 2_100.0})])
+    build = build_difference if view == "difference" else build_overlay
+    panel = build(comparison, resolve_sides(comparison), {"operation": "difference", "method": "linear"}, None, None)
+    qtbot.addWidget(panel)
+    panel.show()
+    qtbot.waitUntil(lambda: len(_graphs(panel.plots()[0])) == 2)
+    base, ghost = _graphs(panel.plots()[0])
+    qtbot.waitUntil(lambda: _x_span(base) is not None and _x_span(ghost) is not None)
+    panel.time_range = TimeRange(1_010.0, 1_110.0)
+    qtbot.wait(500)
+    assert _x_span(ghost) == pytest.approx(_x_span(base))
+    assert _x_span(ghost)[1] >= 1_110.0 - 1
